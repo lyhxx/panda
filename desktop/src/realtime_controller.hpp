@@ -1,6 +1,7 @@
 #pragma once
 
 #include "panda/audio/realtime_stats.hpp"
+#include "worker_protocol.hpp"
 
 #include <QObject>
 #include <QProcess>
@@ -201,6 +202,7 @@ private:
     bool denoise_{false};
     QString denoise_level_{QStringLiteral("strong")};
     QStringList last_realtime_arguments_;
+    panda::desktop::RealtimeOptions last_options_;
     QString last_voice_pack_;
     QString last_model_;
     QString last_device_;

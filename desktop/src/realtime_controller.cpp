@@ -40,6 +40,10 @@ RealtimeController::RealtimeController(QObject* parent)
             ready_ = false;
             emit readyChanged();
             set_status(QStringLiteral("正在加载模型…"));
+            // A reconnect reuses the last arguments, which may predate live
+            // gain/denoise/device changes. Push the current values as soon as
+            // the process is up so the worker starts from them.
+            push_live_controls();
             emit runningChanged();
         }
     );
@@ -655,6 +659,7 @@ void RealtimeController::startRealtime(
     options.denoise_level = denoise_level_;
 
     set_status(QStringLiteral("正在启动实时变声"));
+    last_options_ = options;
     last_realtime_arguments_ =
         panda::desktop::build_realtime_arguments(options);
     stop_requested_ = false;
@@ -790,6 +795,13 @@ void RealtimeController::push_live_controls() {
 void RealtimeController::updateLiveDevices(int inputDevice, int outputDevice) {
     last_input_device_ = inputDevice;
     last_output_device_ = outputDevice;
+    // Keep the reconnect arguments in sync so an unexpected worker exit does
+    // not silently fall back to the devices from the last manual start.
+    last_options_.input_device = inputDevice;
+    last_options_.output_device = outputDevice;
+    last_options_.output_disabled = outputDevice < 0;
+    last_realtime_arguments_ =
+        panda::desktop::build_realtime_arguments(last_options_);
     push_live_controls();
 }
 
