@@ -363,6 +363,36 @@ Popup {
                     }
                 }
 
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: AppState.settingsTab === "audio"
+                    spacing: Theme.space3
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            text: qsTr("显示所有音频设备")
+                            color: Theme.textPrimary
+                            font.pixelSize: Theme.fontBody
+                            font.family: Theme.fontFamily
+                        }
+                        Text {
+                            text: qsTr("默认只列 WASAPI。找不到你的麦克风/声卡时打开它。")
+                            color: Theme.textTertiary
+                            font.pixelSize: Theme.fontSmall
+                            font.family: Theme.fontFamily
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+                    }
+                    AppSwitch {
+                        Layout.alignment: Qt.AlignVCenter
+                        checked: AppState.deviceApiFilter === "all"
+                        onToggled: AppState.deviceApiFilter = checked ? "all" : "wasapi"
+                    }
+                }
+
                 // Sound processing (still under audio)
                 AppCard {
                     Layout.fillWidth: true
