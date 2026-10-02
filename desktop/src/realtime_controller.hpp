@@ -50,6 +50,7 @@ class RealtimeController final : public QObject {
     Q_PROPERTY(QString denoiseLevel READ denoiseLevel WRITE setDenoiseLevel NOTIFY settingsChanged)
     Q_PROPERTY(int reconnectAttempts READ reconnectAttempts NOTIFY reconnectChanged)
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewChanged)
+    Q_PROPERTY(QString previewName READ previewName NOTIFY previewNameChanged)
     Q_PROPERTY(bool micTesting READ micTesting NOTIFY micTestingChanged)
     Q_PROPERTY(bool micMonitoring READ micMonitoring NOTIFY micMonitoringChanged)
     Q_PROPERTY(QString routeReport READ routeReport NOTIFY routeReportChanged)
@@ -105,6 +106,7 @@ public:
     void setDenoiseLevel(const QString& value);
     [[nodiscard]] int reconnectAttempts() const;
     [[nodiscard]] bool previewing() const;
+    [[nodiscard]] QString previewName() const;
     [[nodiscard]] bool micTesting() const;
     [[nodiscard]] bool micMonitoring() const;
     [[nodiscard]] QString routeReport() const;
@@ -129,8 +131,10 @@ public:
         int outputDevice
     );
     // Play a pack reference WAV in-process so previewing is instant instead of
-    // paying Python startup (numpy/scipy imports) on every click.
-    Q_INVOKABLE void previewFile(const QString& path);
+    // paying Python startup (numpy/scipy imports) on every click. Pass the
+    // display name so the UI can show which pack is currently playing, and so
+    // clicking another pack swaps the audio instead of being ignored.
+    Q_INVOKABLE void previewFile(const QString& path, const QString& displayName);
     Q_INVOKABLE void testMicrophone(int inputDevice, int outputDevice);
     Q_INVOKABLE void checkRoute();
     // Live microphone level for the settings meter, without a conversion
@@ -150,6 +154,7 @@ signals:
     void engineConfigChanged();
     void reconnectChanged();
     void previewChanged();
+    void previewNameChanged();
     void micTestingChanged();
     void micMonitoringChanged();
     void routeReportChanged();
@@ -207,6 +212,8 @@ private:
     bool stop_requested_{false};
     int reconnect_attempts_{0};
     bool previewing_{false};
+    bool suppress_preview_finish_{false};
+    QString preview_name_;
     bool mic_testing_{false};
     bool mic_monitoring_{false};
     bool ready_{false};

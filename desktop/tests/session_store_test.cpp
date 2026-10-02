@@ -57,11 +57,6 @@ void SessionStoreTest::defaults_when_nothing_was_saved() {
         values.value(QStringLiteral("denoiseLevel")).toString(),
         QStringLiteral("strong")
     );
-    QVERIFY(values.value(QStringLiteral("favoritePacks")).toStringList().isEmpty());
-    QCOMPARE(
-        values.value(QStringLiteral("sortMode")).toString(),
-        QStringLiteral("favorites")
-    );
 }
 
 void SessionStoreTest::round_trips_values() {
@@ -88,11 +83,6 @@ void SessionStoreTest::round_trips_values() {
         {QStringLiteral("monitorGainDb"), -4.0},
         {QStringLiteral("denoise"), true},
         {QStringLiteral("denoiseLevel"), QStringLiteral("gentle")},
-        {
-            QStringLiteral("favoritePacks"),
-            QStringList{QStringLiteral("manbo"), QStringLiteral("nai-long")},
-        },
-        {QStringLiteral("sortMode"), QStringLiteral("name")},
     };
     store.save(input);
 
@@ -131,14 +121,6 @@ void SessionStoreTest::round_trips_values() {
         values.value(QStringLiteral("denoiseLevel")).toString(),
         QStringLiteral("gentle")
     );
-    QCOMPARE(
-        values.value(QStringLiteral("favoritePacks")).toStringList(),
-        QStringList({QStringLiteral("manbo"), QStringLiteral("nai-long")})
-    );
-    QCOMPARE(
-        values.value(QStringLiteral("sortMode")).toString(),
-        QStringLiteral("name")
-    );
 }
 
 void SessionStoreTest::rejects_unknown_model_and_compute() {
@@ -175,7 +157,6 @@ void SessionStoreTest::clamps_latency_and_device_ids() {
             {QStringLiteral("inputGainDb"), -100.0},
             {QStringLiteral("monitorGainDb"), 100.0},
             {QStringLiteral("denoiseLevel"), QStringLiteral("unknown")},
-            {QStringLiteral("sortMode"), QStringLiteral("unsupported")},
         }
     );
 
@@ -194,10 +175,6 @@ void SessionStoreTest::clamps_latency_and_device_ids() {
     QCOMPARE(
         values.value(QStringLiteral("denoiseLevel")).toString(),
         QStringLiteral("strong")
-    );
-    QCOMPARE(
-        values.value(QStringLiteral("sortMode")).toString(),
-        QStringLiteral("favorites")
     );
 }
 

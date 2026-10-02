@@ -5,9 +5,7 @@
 
 #include <QAbstractListModel>
 #include <QHash>
-#include <QSet>
 #include <QString>
-#include <QStringList>
 #include <QVariant>
 
 #include <filesystem>
@@ -22,9 +20,6 @@ class PackListModel final : public QAbstractListModel {
     Q_PROPERTY(bool lastErrorIsAlreadyInstalled READ lastErrorIsAlreadyInstalled NOTIFY lastErrorChanged)
     Q_PROPERTY(QString lastMessage READ lastMessage NOTIFY lastMessageChanged)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
-    Q_PROPERTY(bool favoritesOnly READ favoritesOnly WRITE setFavoritesOnly NOTIFY favoritesOnlyChanged)
-    Q_PROPERTY(QString sortMode READ sortMode WRITE setSortMode NOTIFY sortModeChanged)
-    Q_PROPERTY(QStringList favoriteIds READ favoriteIds NOTIFY favoritesChanged)
 
 public:
     enum Role {
@@ -36,7 +31,6 @@ public:
         FolderPathRole,
         IconPathRole,
         ReferencePathRole,
-        IsFavoriteRole,
     };
     Q_ENUM(Role)
 
@@ -74,14 +68,9 @@ public:
     [[nodiscard]] QString lastMessage() const;
     [[nodiscard]] QString filter() const;
     void setFilter(const QString& value);
-    [[nodiscard]] bool favoritesOnly() const;
-    void setFavoritesOnly(bool value);
-    [[nodiscard]] QString sortMode() const;
-    void setSortMode(const QString& value);
-    [[nodiscard]] QStringList favoriteIds() const;
-    Q_INVOKABLE void setFavorites(const QStringList& values);
-    [[nodiscard]] Q_INVOKABLE bool isFavorite(const QString& packId) const;
-    Q_INVOKABLE void toggleFavorite(const QString& packId);
+    // Resolves a pack folder back to its human-readable name so the UI can
+    // show the Chinese name instead of the pinyin folder id.
+    [[nodiscard]] Q_INVOKABLE QString displayNameForFolder(const QString& folderPath) const;
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE bool installPack(const QString& archivePath, bool overwrite);
@@ -97,9 +86,6 @@ signals:
     void lastErrorChanged();
     void lastMessageChanged();
     void filterChanged();
-    void favoritesOnlyChanged();
-    void sortModeChanged();
-    void favoritesChanged();
 
 private:
     struct Entry {
@@ -118,8 +104,5 @@ private:
     int lastErrorCode_{0};
     QString lastMessage_;
     QString filter_;
-    bool favoritesOnly_{false};
-    QString sortMode_{QStringLiteral("favorites")};
-    QSet<QString> favorites_;
 };
 

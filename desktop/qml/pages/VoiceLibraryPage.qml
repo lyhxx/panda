@@ -34,20 +34,6 @@ Item {
             Layout.fillWidth: true
             spacing: Theme.space3
 
-            TabBar {
-                id: voicesTabs
-                Layout.alignment: Qt.AlignVCenter
-                spacing: 6
-                background: null
-
-                AppTabButton { text: qsTr("全部") }
-                AppTabButton { text: qsTr("收藏") }
-
-                onCurrentIndexChanged: {
-                    packListModel.favoritesOnly = currentIndex === 1
-                }
-            }
-
             Item { Layout.fillWidth: true }
 
             AppTextField {
@@ -178,7 +164,7 @@ Item {
 
                     Icon {
                         anchors.centerIn: parent
-                        name: packListModel.favoritesOnly ? "star" : "waveform"
+                        name: "waveform"
                         color: Theme.textTertiary
                         implicitWidth: 30
                         implicitHeight: 30
@@ -187,9 +173,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: packListModel.favoritesOnly
-                          ? qsTr("还没有收藏的音色")
-                          : qsTr("还没有安装音色包")
+                    text: qsTr("还没有安装音色包")
                     color: Theme.textPrimary
                     font.pixelSize: Theme.fontHeading
                     font.weight: Font.DemiBold
@@ -199,9 +183,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: packListModel.favoritesOnly
-                          ? qsTr("在「全部」里点音色卡右上角的星标即可收藏。")
-                          : qsTr("点击「安装音色包」导入 ZIP，或把音色包放进 voices 目录后刷新。")
+                    text: qsTr("点击「安装音色包」导入 ZIP，或把音色包放进 voices 目录后刷新。")
                     color: Theme.textSecondary
                     font.pixelSize: Theme.fontBody
                     font.family: Theme.fontFamily
@@ -211,7 +193,6 @@ Item {
 
                 AppButton {
                     Layout.alignment: Qt.AlignHCenter
-                    visible: !packListModel.favoritesOnly
                     text: qsTr("安装音色包")
                     iconName: "plus"
                     variant: "primary"

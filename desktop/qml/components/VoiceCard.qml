@@ -14,7 +14,6 @@ Item {
     required property string folderPath
     required property string iconPath
     required property string referencePath
-    required property bool isFavorite
 
     signal deleteRequested(string packId, string packName)
 
@@ -99,19 +98,6 @@ Item {
             smooth: true
             mipmap: true
         }
-
-        AppIconButton {
-            anchors.top: parent.top
-            anchors.right: parent.right
-            size: 26
-            iconSize: 15
-            iconName: "star"
-            iconFilled: root.isFavorite
-            iconColor: root.isFavorite ? Theme.warning : Theme.textTertiary
-            iconColorActive: root.isFavorite ? Theme.warning : Theme.textPrimary
-            tooltip: root.isFavorite ? qsTr("取消收藏") : qsTr("收藏")
-            onClicked: packListModel.toggleFavorite(root.packId)
-        }
     }
 
     Text {
@@ -146,8 +132,11 @@ Item {
             iconSize: 15
             iconName: "play"
             tooltip: qsTr("试听")
-            enabled: root.canInteract && !realtimeController.previewing
-            onClicked: realtimeController.previewFile(root.referencePath)
+            enabled: root.canInteract
+            onClicked: realtimeController.previewFile(
+                root.referencePath,
+                root.displayName
+            )
         }
 
         AppIconButton {

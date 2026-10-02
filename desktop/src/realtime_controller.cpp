@@ -552,6 +552,10 @@ bool RealtimeController::previewing() const {
     return previewing_;
 }
 
+QString RealtimeController::previewName() const {
+    return preview_name_;
+}
+
 bool RealtimeController::micTesting() const {
     return mic_testing_;
 }
@@ -662,7 +666,10 @@ void RealtimeController::startRealtime(
     process_.start();
 }
 
-void RealtimeController::previewFile(const QString& path) {
+void RealtimeController::previewFile(
+    const QString& path,
+    const QString& displayName
+) {
     if (path.isEmpty() || !QFileInfo::exists(path)) {
         set_status(QStringLiteral("参考音频不存在"));
         return;
@@ -679,15 +686,37 @@ void RealtimeController::previewFile(const QString& path) {
                 if (previewing_ != playing) {
                     previewing_ = playing;
                     emit previewChanged();
-                    if (!playing) {
+                    if (!playing && !suppress_preview_finish_) {
                         set_status(QStringLiteral("试听完成"));
                     }
                 }
             }
         );
+        connect(
+            preview_effect_,
+            &QSoundEffect::statusChanged,
+            this,
+            [this] {
+                if (preview_effect_->status() == QSoundEffect::Error) {
+                    if (previewing_) {
+                        previewing_ = false;
+                        emit previewChanged();
+                    }
+                    set_status(QStringLiteral("试听失败：无法播放参考音频"));
+                }
+            }
+        );
     }
+    // Switching packs while one is already playing: stop the old reference
+    // silently so the audio follows the click instead of continuing.
     if (preview_effect_->isPlaying()) {
+        suppress_preview_finish_ = true;
         preview_effect_->stop();
+        suppress_preview_finish_ = false;
+    }
+    if (preview_name_ != displayName) {
+        preview_name_ = displayName;
+        emit previewNameChanged();
     }
     preview_effect_->setSource(QUrl::fromLocalFile(path));
     preview_effect_->play();

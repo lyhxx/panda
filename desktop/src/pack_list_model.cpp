@@ -105,8 +105,6 @@ QVariant PackListModel::data(const QModelIndex& index, int role) const {
             }
             return {};
         }
-        case IsFavoriteRole:
-            return favorites_.contains(from_utf8(entry.manifest.id));
         default:
             return {};
     }
@@ -122,7 +120,6 @@ QHash<int, QByteArray> PackListModel::roleNames() const {
         {FolderPathRole, "folderPath"},
         {IconPathRole, "iconPath"},
         {ReferencePathRole, "referencePath"},
-        {IsFavoriteRole, "isFavorite"},
     };
 }
 
@@ -232,73 +229,19 @@ void PackListModel::setFilter(const QString& value) {
     emit filterChanged();
 }
 
-bool PackListModel::favoritesOnly() const {
-    return favoritesOnly_;
-}
-
-void PackListModel::setFavoritesOnly(bool value) {
-    if (favoritesOnly_ == value) {
-        return;
+QString PackListModel::displayNameForFolder(const QString& folderPath) const {
+    if (folderPath.isEmpty()) {
+        return {};
     }
-    favoritesOnly_ = value;
-    apply_filter();
-    emit favoritesOnlyChanged();
-}
-
-QString PackListModel::sortMode() const {
-    return sortMode_;
-}
-
-void PackListModel::setSortMode(const QString& value) {
-    const auto normalized = value == QStringLiteral("name")
-        ? QStringLiteral("name")
-        : QStringLiteral("favorites");
-    if (sortMode_ == normalized) {
-        return;
-    }
-    sortMode_ = normalized;
-    apply_filter();
-    emit sortModeChanged();
-}
-
-QStringList PackListModel::favoriteIds() const {
-    auto result = favorites_.values();
-    result.sort(Qt::CaseInsensitive);
-    return result;
-}
-
-void PackListModel::setFavorites(const QStringList& values) {
-    QSet<QString> next;
-    for (const auto& value : values) {
-        const auto trimmed = value.trimmed();
-        if (!trimmed.isEmpty()) {
-            next.insert(trimmed);
+    const QString needle = QString(folderPath).replace(u'\\', u'/');
+    for (const auto& entry : all_entries_) {
+        const QString candidate =
+            QString::fromStdWString(entry.path.wstring()).replace(u'\\', u'/');
+        if (QString::compare(candidate, needle, Qt::CaseInsensitive) == 0) {
+            return from_utf8(entry.manifest.name);
         }
     }
-    if (favorites_ == next) {
-        return;
-    }
-    favorites_ = std::move(next);
-    apply_filter();
-    emit favoritesChanged();
-}
-
-bool PackListModel::isFavorite(const QString& packId) const {
-    return favorites_.contains(packId);
-}
-
-void PackListModel::toggleFavorite(const QString& packId) {
-    if (packId.isEmpty()) {
-        return;
-    }
-    if (favorites_.contains(packId)) {
-        favorites_.remove(packId);
-    }
-    else {
-        favorites_.insert(packId);
-    }
-    apply_filter();
-    emit favoritesChanged();
+    return {};
 }
 
 void PackListModel::apply_filter() {
@@ -309,9 +252,6 @@ void PackListModel::apply_filter() {
     entries_.reserve(all_entries_.size());
     for (const auto& entry : all_entries_) {
         const auto id = from_utf8(entry.manifest.id);
-        if (favoritesOnly_ && !favorites_.contains(id)) {
-            continue;
-        }
         if (needle.isEmpty()) {
             entries_.push_back(entry);
             continue;
@@ -341,27 +281,7 @@ void PackListModel::apply_filter() {
             Qt::CaseInsensitive
         ) < 0;
     };
-    if (sortMode_ == QStringLiteral("favorites")) {
-        std::sort(
-            entries_.begin(),
-            entries_.end(),
-            [this, &compare_name](const Entry& left, const Entry& right) {
-                const auto left_favorite = favorites_.contains(
-                    from_utf8(left.manifest.id)
-                );
-                const auto right_favorite = favorites_.contains(
-                    from_utf8(right.manifest.id)
-                );
-                if (left_favorite != right_favorite) {
-                    return left_favorite;
-                }
-                return compare_name(left, right);
-            }
-        );
-    }
-    else {
-        std::sort(entries_.begin(), entries_.end(), compare_name);
-    }
+    std::sort(entries_.begin(), entries_.end(), compare_name);
     endResetModel();
 
     emit countChanged();
@@ -410,8 +330,6 @@ bool PackListModel::removePack(const QString& packId) {
         return false;
     }
 
-    favorites_.remove(packId);
-    emit favoritesChanged();
     refresh();
     set_message(tr("已删除：%1").arg(packId));
     return true;

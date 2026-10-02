@@ -130,9 +130,6 @@ private slots:
     void filters_by_id_and_name();
     void refresh_keeps_the_active_filter();
     void contains_folder_uses_the_unfiltered_set();
-    void favorites_sort_before_other_packs();
-    void favorite_only_filter_shows_just_favorites();
-    void removing_a_pack_removes_its_favorite();
 };
 
 void PackListModelTest::empty_root_scans_to_zero() {
@@ -336,84 +333,6 @@ void PackListModelTest::contains_folder_uses_the_unfiltered_set() {
     model.setFilter(QStringLiteral("Nai Long"));
     QCOMPARE(model.count(), 1);
     QVERIFY(model.containsFolder(manbo));
-}
-
-void PackListModelTest::favorites_sort_before_other_packs() {
-    QTemporaryDir temp;
-    QVERIFY(temp.isValid());
-    QVERIFY(create_valid_pack(temp.path(), QStringLiteral("zulu"), QStringLiteral("Zulu")));
-    QVERIFY(create_valid_pack(temp.path(), QStringLiteral("alpha"), QStringLiteral("Alpha")));
-
-    PackListModel model;
-    model.setVoicesRoot(temp.path());
-    model.refresh();
-
-    model.toggleFavorite(QStringLiteral("zulu"));
-    QCOMPARE(
-        model.index(0, 0).data(PackListModel::PackIdRole).toString(),
-        QStringLiteral("zulu")
-    );
-    QCOMPARE(
-        model.index(0, 0).data(PackListModel::IsFavoriteRole).toBool(),
-        true
-    );
-    QVERIFY(model.favoriteIds().contains(QStringLiteral("zulu")));
-
-    model.setSortMode(QStringLiteral("name"));
-    QCOMPARE(
-        model.index(0, 0).data(PackListModel::PackIdRole).toString(),
-        QStringLiteral("alpha")
-    );
-
-    model.setSortMode(QStringLiteral("favorites"));
-    QCOMPARE(
-        model.index(0, 0).data(PackListModel::PackIdRole).toString(),
-        QStringLiteral("zulu")
-    );
-}
-
-void PackListModelTest::favorite_only_filter_shows_just_favorites() {
-    QTemporaryDir temp;
-    QVERIFY(temp.isValid());
-    QVERIFY(create_valid_pack(temp.path(), QStringLiteral("alpha"), QStringLiteral("Alpha")));
-    QVERIFY(create_valid_pack(temp.path(), QStringLiteral("beta"), QStringLiteral("Beta")));
-
-    PackListModel model;
-    model.setVoicesRoot(temp.path());
-    model.refresh();
-    QCOMPARE(model.count(), 2);
-
-    model.toggleFavorite(QStringLiteral("alpha"));
-    model.setFavoritesOnly(true);
-    QCOMPARE(model.count(), 1);
-    QCOMPARE(
-        model.index(0, 0).data(PackListModel::PackIdRole).toString(),
-        QStringLiteral("alpha")
-    );
-
-    // Un-favouriting a pack while the filter is active must hide it again.
-    model.toggleFavorite(QStringLiteral("alpha"));
-    QCOMPARE(model.count(), 0);
-
-    model.setFavoritesOnly(false);
-    QCOMPARE(model.count(), 2);
-}
-
-void PackListModelTest::removing_a_pack_removes_its_favorite() {
-    QTemporaryDir temp;
-    QVERIFY(temp.isValid());
-    QVERIFY(create_valid_pack(temp.path(), QStringLiteral("demo-voice")));
-
-    PackListModel model;
-    model.setVoicesRoot(temp.path());
-    model.refresh();
-    model.toggleFavorite(QStringLiteral("demo-voice"));
-    QVERIFY(model.isFavorite(QStringLiteral("demo-voice")));
-
-    QVERIFY(model.removePack(QStringLiteral("demo-voice")));
-
-    QVERIFY(!model.isFavorite(QStringLiteral("demo-voice")));
-    QVERIFY(model.favoriteIds().isEmpty());
 }
 
 QTEST_GUILESS_MAIN(PackListModelTest)

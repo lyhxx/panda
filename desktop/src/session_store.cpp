@@ -22,13 +22,6 @@ QString sanitized_choice(
     return allowed.contains(text) ? text : fallback;
 }
 
-QString sanitized_sort_mode(const QVariant& value) {
-    const auto text = value.toString();
-    return text == QStringLiteral("name")
-        ? QStringLiteral("name")
-        : QStringLiteral("favorites");
-}
-
 int sanitized_device(const QVariant& value) {
     if (!value.isValid()) {
         return -1;
@@ -93,10 +86,6 @@ QVariantMap SessionStore::load() const {
         settings.value(QStringLiteral("session/denoise"), false);
     values[QStringLiteral("denoiseLevel")] =
         settings.value(QStringLiteral("session/denoise_level"), "strong");
-    values[QStringLiteral("favoritePacks")] =
-        settings.value(QStringLiteral("session/favorite_packs"), QStringList{});
-    values[QStringLiteral("sortMode")] =
-        settings.value(QStringLiteral("session/sort_mode"), "favorites");
 
     return sanitize(values);
 }
@@ -177,14 +166,6 @@ void SessionStore::save(const QVariantMap& values) const {
         QStringLiteral("session/denoise_level"),
         clean.value(QStringLiteral("denoiseLevel"))
     );
-    settings.setValue(
-        QStringLiteral("session/favorite_packs"),
-        clean.value(QStringLiteral("favoritePacks"))
-    );
-    settings.setValue(
-        QStringLiteral("session/sort_mode"),
-        clean.value(QStringLiteral("sortMode"))
-    );
     settings.sync();
 }
 
@@ -245,11 +226,6 @@ QVariantMap SessionStore::sanitize(const QVariantMap& values) {
         values.value(QStringLiteral("denoise")).toBool();
     clean[QStringLiteral("denoiseLevel")] = clamp_denoise_level(
         values.value(QStringLiteral("denoiseLevel"), "strong").toString()
-    );
-    clean[QStringLiteral("favoritePacks")] =
-        values.value(QStringLiteral("favoritePacks")).toStringList();
-    clean[QStringLiteral("sortMode")] = sanitized_sort_mode(
-        values.value(QStringLiteral("sortMode"), "favorites")
     );
     return clean;
 }

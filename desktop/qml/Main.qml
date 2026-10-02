@@ -19,7 +19,8 @@ ApplicationWindow {
     property int lastMonitorDevice: -1
 
     readonly property string selectedPackName: AppState.selectedPack.length > 0
-        ? AppState.selectedPack.replace(/\\/g, "/").split("/").pop()
+        ? (packListModel.displayNameForFolder(AppState.selectedPack)
+           || AppState.selectedPack.replace(/\\/g, "/").split("/").pop())
         : qsTr("未选择音色")
 
     readonly property bool monitorOn: AppState.selectedMonitorDevice >= 0
@@ -67,8 +68,6 @@ ApplicationWindow {
         realtimeController.monitorGainDb = saved.monitorGainDb
         realtimeController.denoise = saved.denoise
         realtimeController.denoiseLevel = saved.denoiseLevel
-        packListModel.setFavorites(saved.favoritePacks)
-        packListModel.sortMode = saved.sortMode
     }
 
     function persistSettings() {
@@ -99,9 +98,7 @@ ApplicationWindow {
             "outputGainDb": realtimeController.outputGainDb,
             "monitorGainDb": realtimeController.monitorGainDb,
             "denoise": realtimeController.denoise,
-            "denoiseLevel": realtimeController.denoiseLevel,
-            "favoritePacks": packListModel.favoriteIds,
-            "sortMode": packListModel.sortMode
+            "denoiseLevel": realtimeController.denoiseLevel
         })
     }
 
@@ -290,14 +287,6 @@ ApplicationWindow {
 
                     Item { Layout.fillWidth: true }
 
-                    AppIconButton {
-                        iconName: "sliders"
-                        iconSize: 17
-                        size: 34
-                        tooltip: qsTr("设置")
-                        onClicked: AppState.settingsOpen = true
-                    }
-
                     SegmentedControl {
                         Layout.alignment: Qt.AlignVCenter
                         options: [
@@ -349,7 +338,10 @@ ApplicationWindow {
                 spacing: Theme.space2
 
                 Text {
-                    text: root.selectedPackName
+                    text: realtimeController.previewing
+                          && realtimeController.previewName.length > 0
+                          ? realtimeController.previewName
+                          : root.selectedPackName
                     color: Theme.textPrimary
                     font.pixelSize: Theme.fontSmall
                     font.weight: Font.DemiBold

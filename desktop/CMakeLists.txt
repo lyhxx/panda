@@ -45,7 +45,6 @@ qt_add_qml_module(panda_desktop
         qml/components/TickMeter.qml
         qml/components/PowerToggle.qml
         qml/components/GlassRoundButton.qml
-        qml/components/AppTabButton.qml
         qml/components/AppScrollBar.qml
         qml/components/AppScrollView.qml
         qml/components/Tooltip.qml

@@ -110,17 +110,14 @@ Popup {
                 spacing: Theme.space4
 
                 // ---- Audio -----------------------------------------------
-                GridLayout {
+                ColumnLayout {
                     Layout.fillWidth: true
                     visible: AppState.settingsTab === "audio"
-                    columns: 2
-                    columnSpacing: Theme.space4
-                    rowSpacing: Theme.space4
+                    spacing: Theme.space4
 
                     // Input
                     AppCard {
                         Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignTop
 
                         SectionTitle {
                             icon: "mic"
@@ -179,7 +176,6 @@ Popup {
                     // Output
                     AppCard {
                         Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignTop
 
                         SectionTitle {
                             icon: "volume"
