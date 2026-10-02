@@ -12,6 +12,8 @@ param(
     [string]$CondaExecutable = "",
     [string]$MeanVC2Root = "",
     [string]$DeepFilterNetRoot = "",
+    # Where the audio engine source lives (the panda-engine repository).
+    [string]$EngineDirectory = "",
     [switch]$SkipTests,
     [switch]$NoZip,
     [string]$CertificateThumbprint = "",
@@ -22,6 +24,14 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+
+if ([string]::IsNullOrWhiteSpace($EngineDirectory)) {
+    $EngineDirectory = Join-Path $repoRoot "..\panda-engine"
+}
+$engineRoot = [IO.Path]::GetFullPath($EngineDirectory)
+if (-not (Test-Path -LiteralPath (Join-Path $engineRoot "src\panda_infer") -PathType Container)) {
+    throw "Engine source was not found under '$engineRoot'. Pass -EngineDirectory <panda-engine path>."
+}
 
 function Get-Sha256Hex([string]$Path) {
     $attempt = 0
@@ -202,7 +212,7 @@ while ($true) {
     & $windeployqt `
         $deployMode `
         --no-translations `
-        --qmldir (Join-Path $repoRoot "apps\panda-desktop\qml") `
+        --qmldir (Join-Path $repoRoot "desktop\qml") `
         $packagedExecutable
     if ($LASTEXITCODE -eq 0) {
         break
@@ -256,7 +266,7 @@ foreach ($package in @("panda_cli", "panda_infer", "panda_pack")) {
     Copy-Item `
         -Recurse `
         -Force `
-        -LiteralPath (Join-Path $repoRoot "src\$package") `
+        -LiteralPath (Join-Path $engineRoot "src\$package") `
         -Destination (Join-Path $pythonShare $package)
 }
 
