@@ -198,7 +198,7 @@ if (-not $SkipTests) {
 
 $executable = Join-Path `
     $buildPath `
-    "apps\panda-desktop\$Configuration\panda_desktop.exe"
+    "desktop\$Configuration\panda_desktop.exe"
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Desktop executable was not found: $executable"
 }
