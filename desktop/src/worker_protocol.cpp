@@ -101,8 +101,7 @@ QString clamp_denoise_level(const QString& value) {
 QStringList build_realtime_arguments(const RealtimeOptions& options) {
     QStringList arguments{
         QStringLiteral("-m"),
-        QStringLiteral("panda_cli"),
-        QStringLiteral("realtime"),
+        QStringLiteral("panda_infer.realtime_worker"),
         QStringLiteral("--meanvc2-root"),
         options.meanvc2_root,
         QStringLiteral("--voice-pack"),

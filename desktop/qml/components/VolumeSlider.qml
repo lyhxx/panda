@@ -10,11 +10,16 @@ Item {
     property real minDb: -24
     property real maxDb: 12
     property bool percentage: true
+    // When true, gainDb already carries the 0..100 percentage (used for the
+    // Windows system volume) instead of a dB gain.
+    property bool systemVolume: false
     property string unit: " dB"
     signal gainMoved(real db)
 
-    readonly property real percent: Math.max(0, Math.min(100,
-        Math.round((gainDb - minDb) / (maxDb - minDb) * 100)))
+    readonly property real percent: systemVolume
+        ? Math.max(0, Math.min(100, Math.round(gainDb)))
+        : Math.max(0, Math.min(100,
+            Math.round((gainDb - minDb) / (maxDb - minDb) * 100)))
 
     implicitHeight: 54
     implicitWidth: 240
@@ -29,7 +34,9 @@ Item {
         value: root.percentage ? root.percent : root.gainDb
         onMoved: root.gainMoved(
             root.percentage
-                ? root.minDb + value / 100 * (root.maxDb - root.minDb)
+                ? (root.systemVolume
+                   ? value
+                   : root.minDb + value / 100 * (root.maxDb - root.minDb))
                 : value
         )
     }

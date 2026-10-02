@@ -25,6 +25,34 @@ Popup {
         )
     }
 
+    property real systemMicVolume: 80
+    property real systemOutputVolume: 50
+
+    // Mirror the Windows mixer: read the endpoint volume for the selected
+    // devices so the sliders show the same numbers as 系统 > 声音.
+    function refreshSystemVolumes() {
+        if (AppState.selectedInputDevice >= 0) {
+            const mic = realtimeController.deviceVolume(AppState.selectedInputDevice, false)
+            if (mic >= 0) {
+                systemMicVolume = mic * 100
+            }
+        }
+        if (AppState.selectedOutputDevice >= 0) {
+            const out = realtimeController.deviceVolume(AppState.selectedOutputDevice, true)
+            if (out >= 0) {
+                systemOutputVolume = out * 100
+            }
+        }
+    }
+
+    onOpened: refreshSystemVolumes()
+
+    Connections {
+        target: AppState
+        function onSelectedInputDeviceChanged() { dialog.refreshSystemVolumes() }
+        function onSelectedOutputDeviceChanged() { dialog.refreshSystemVolumes() }
+    }
+
     modal: true
     focus: true
     visible: AppState.settingsOpen
@@ -161,15 +189,21 @@ Popup {
                             font.family: Theme.fontFamily
                         }
                         Text {
-                            text: qsTr("数值越大越响；约 67 表示原始音量。")
+                            text: qsTr("直接调这个麦克风的系统音量。")
                             color: Theme.textTertiary
                             font.pixelSize: Theme.fontSmall
                             font.family: Theme.fontFamily
                         }
                         VolumeSlider {
                             Layout.fillWidth: true
-                            gainDb: realtimeController.inputGainDb
-                            onGainMoved: realtimeController.inputGainDb = db
+                            systemVolume: true
+                            gainDb: dialog.systemMicVolume
+                            onGainMoved: {
+                                dialog.systemMicVolume = db
+                                realtimeController.setDeviceVolume(
+                                    AppState.selectedInputDevice, false, db / 100
+                                )
+                            }
                         }
                     }
 
@@ -183,15 +217,34 @@ Popup {
                             subtitle: qsTr("给其它软件的声音。普通扬声器只有本机能听到。")
                         }
 
-                        AppComboBox {
+                        RowLayout {
                             Layout.fillWidth: true
-                            model: [{ "id": -1, "label": qsTr("不输出") }].concat(
-                                AppState.filteredDevices(realtimeController.outputDevices)
-                            )
-                            textRole: "label"
-                            valueRole: "id"
-                            desiredValue: AppState.selectedOutputDevice
-                            onActivated: AppState.selectedOutputDevice = currentValue
+                            spacing: Theme.space2
+
+                            AppComboBox {
+                                Layout.fillWidth: true
+                                model: [{ "id": -1, "label": qsTr("不输出") }].concat(
+                                    AppState.filteredDevices(realtimeController.outputDevices)
+                                )
+                                textRole: "label"
+                                valueRole: "id"
+                                desiredValue: AppState.selectedOutputDevice
+                                onActivated: AppState.selectedOutputDevice = currentValue
+                            }
+                            AppIconButton {
+                                iconName: "refresh"
+                                iconSize: 16
+                                size: 36
+                                tooltip: qsTr("刷新设备")
+                                onClicked: realtimeController.refreshDevices()
+                            }
+                        }
+
+                        TickMeter {
+                            Layout.fillWidth: true
+                            stretch: true
+                            value: Math.min(realtimeController.outputPeak, 1)
+                            clipped: realtimeController.outputClipped
                         }
 
                         Rectangle {
@@ -252,6 +305,11 @@ Popup {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: Theme.space3
+                            // Monitoring only makes sense when the converted
+                            // voice goes somewhere you cannot hear (a virtual
+                            // cable). With a local output it would just be the
+                            // same device twice, so keep it out of the way.
+                            visible: dialog.deviceIsVirtual
 
                             ColumnLayout {
                                 Layout.fillWidth: true
@@ -285,10 +343,22 @@ Popup {
                             font.weight: Font.DemiBold
                             font.family: Theme.fontFamily
                         }
+                        Text {
+                            text: qsTr("直接调这个输出设备的系统音量。")
+                            color: Theme.textTertiary
+                            font.pixelSize: Theme.fontSmall
+                            font.family: Theme.fontFamily
+                        }
                         VolumeSlider {
                             Layout.fillWidth: true
-                            gainDb: realtimeController.outputGainDb
-                            onGainMoved: realtimeController.outputGainDb = db
+                            systemVolume: true
+                            gainDb: dialog.systemOutputVolume
+                            onGainMoved: {
+                                dialog.systemOutputVolume = db
+                                realtimeController.setDeviceVolume(
+                                    AppState.selectedOutputDevice, true, db / 100
+                                )
+                            }
                         }
                     }
                 }

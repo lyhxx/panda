@@ -24,6 +24,9 @@ ApplicationWindow {
         : qsTr("未选择音色")
 
     readonly property bool monitorOn: AppState.selectedMonitorDevice >= 0
+    readonly property bool outputIsVirtual: AppState.selectedOutputDevice >= 0
+        && AppState.deviceIsVirtual(realtimeController.outputDevices,
+                                    AppState.selectedOutputDevice)
 
     function monitorDeviceName() {
         const id = AppState.selectedMonitorDevice
@@ -162,6 +165,7 @@ ApplicationWindow {
 
     onClosing: {
         persistSettings()
+        realtimeController.stopMicMonitor()
         realtimeController.stop()
     }
 
@@ -225,7 +229,18 @@ ApplicationWindow {
             root.syncMicMonitor()
             root.pushLiveDevices()
         }
-        function onSelectedOutputDeviceChanged() { root.pushLiveDevices() }
+        function onSelectedOutputDeviceChanged() {
+            // Monitoring only applies to a virtual output; clear it when the
+            // user picks a device they can already hear.
+            if (AppState.selectedMonitorDevice >= 0
+                    && !AppState.deviceIsVirtual(
+                        realtimeController.outputDevices,
+                        AppState.selectedOutputDevice
+                    )) {
+                AppState.selectedMonitorDevice = -1
+            }
+            root.pushLiveDevices()
+        }
         // Monitoring has a single source of truth: the selected monitor device.
         // Selecting a device turns monitoring on; "不监听" turns it off.
         function onSelectedMonitorDeviceChanged() {
@@ -394,6 +409,7 @@ ApplicationWindow {
                 GlassRoundButton {
                     iconName: "headphones"
                     active: root.monitorOn
+                    visible: root.outputIsVirtual
                     tooltipAbove: true
                     tooltip: root.monitorOn
                              ? qsTr("关闭监听（当前：%1）").arg(root.monitorDeviceName())

@@ -16,6 +16,8 @@ qt_add_executable(panda_desktop
     src/session_store.hpp
     src/theme_manager.cpp
     src/theme_manager.hpp
+    src/windows_volume.cpp
+    src/windows_volume.hpp
 )
 
 set(theme_qml qml/Theme.qml)
@@ -76,6 +78,10 @@ target_link_libraries(panda_desktop
         Qt6::QuickDialogs2
         Qt6::Multimedia
 )
+
+if(WIN32)
+    target_link_libraries(panda_desktop PRIVATE ole32 propsys)
+endif()
 
 set_target_properties(panda_desktop PROPERTIES
     WIN32_EXECUTABLE TRUE

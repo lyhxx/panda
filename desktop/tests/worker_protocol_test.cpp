@@ -70,8 +70,9 @@ void WorkerProtocolTest::builds_the_module_invocation() {
     const auto arguments = build_realtime_arguments(options);
 
     QCOMPARE(arguments.at(0), QStringLiteral("-m"));
-    QCOMPARE(arguments.at(1), QStringLiteral("panda_cli"));
-    QCOMPARE(arguments.at(2), QStringLiteral("realtime"));
+    // The worker is launched directly (single process) so stopping the job
+    // actually kills it instead of leaving a child holding the microphone.
+    QCOMPARE(arguments.at(1), QStringLiteral("panda_infer.realtime_worker"));
     QCOMPARE(
         value_of(arguments, QStringLiteral("--meanvc2-root")),
         QStringLiteral("D:/MeanVC2")

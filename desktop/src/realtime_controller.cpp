@@ -2,6 +2,7 @@
 
 #include "device_list.hpp"
 #include "worker_protocol.hpp"
+#include "windows_volume.hpp"
 
 #include <QFileInfo>
 #include <QJsonArray>
@@ -10,6 +11,7 @@
 #include <QSoundEffect>
 #include <QTimer>
 #include <QUrl>
+#include <QVariantMap>
 
 RealtimeController::RealtimeController(QObject* parent)
     : QObject(parent) {
@@ -803,6 +805,46 @@ void RealtimeController::updateLiveDevices(int inputDevice, int outputDevice) {
     last_realtime_arguments_ =
         panda::desktop::build_realtime_arguments(last_options_);
     push_live_controls();
+}
+
+namespace {
+
+QString device_name_for(const QVariantList& devices, int id) {
+    for (const auto& value : devices) {
+        const auto map = value.toMap();
+        if (map.value(QStringLiteral("id")).toInt() == id) {
+            return map.value(QStringLiteral("deviceName")).toString();
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
+double RealtimeController::deviceVolume(int deviceId, bool output) const {
+    const auto name = device_name_for(
+        output ? output_devices_ : input_devices_,
+        deviceId
+    );
+    if (name.isEmpty()) {
+        return -1.0;
+    }
+    return panda::desktop::endpoint_volume(name, output).value_or(-1.0);
+}
+
+void RealtimeController::setDeviceVolume(
+    int deviceId,
+    bool output,
+    double scalar
+) {
+    const auto name = device_name_for(
+        output ? output_devices_ : input_devices_,
+        deviceId
+    );
+    if (name.isEmpty()) {
+        return;
+    }
+    panda::desktop::set_endpoint_volume(name, output, scalar);
 }
 
 void RealtimeController::previewVoicePack(

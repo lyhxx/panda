@@ -143,6 +143,11 @@ public:
     Q_INVOKABLE void startMicMonitor(int inputDevice);
     Q_INVOKABLE void stopMicMonitor();
 
+    // Windows endpoint (system mixer) volume for a device, 0..1. Returns -1
+    // when the device cannot be mapped, so the UI can fall back gracefully.
+    Q_INVOKABLE double deviceVolume(int deviceId, bool output) const;
+    Q_INVOKABLE void setDeviceVolume(int deviceId, bool output, double scalar);
+
 signals:
     void runningChanged();
     void readyChanged();
