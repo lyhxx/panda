@@ -116,12 +116,14 @@ Item {
         anchors.top: nameLabel.bottom
         anchors.topMargin: 4
         spacing: 2
-        opacity: root.hovered ? 1 : 0
+        opacity: (root.selected || root.hovered || previewButton.hovered || deleteButton.hovered)
+                 ? 1 : 0
         Behavior on opacity {
             NumberAnimation { duration: Theme.durFast }
         }
 
         AppIconButton {
+            id: previewButton
             size: 28
             iconSize: 15
             iconName: "play"
@@ -134,6 +136,7 @@ Item {
         }
 
         AppIconButton {
+            id: deleteButton
             size: 28
             iconSize: 15
             iconName: "trash"

@@ -30,6 +30,13 @@ $env:PANDA_PYTHON = $python
 $env:PANDA_MEANVC2_ROOT = $meanvc2
 $env:PANDA_VOICES_ROOT = $voices
 
+# The engine is a separate repository; expose its source in case it is not
+# pip-installed into the Python environment.
+$engine = Join-Path $repoRoot "..\panda-engine\src"
+if (Test-Path -LiteralPath $engine -PathType Container) {
+    $env:PYTHONPATH = $engine + [IO.Path]::PathSeparator + $env:PYTHONPATH
+}
+
 if (-not (Test-Path -LiteralPath $voices -PathType Container)) {
     New-Item -ItemType Directory -Path $voices -Force | Out-Null
 }
