@@ -7,7 +7,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSoundEffect>
 #include <QTimer>
+#include <QUrl>
 
 RealtimeController::RealtimeController(QObject* parent)
     : QObject(parent) {
@@ -658,6 +660,42 @@ void RealtimeController::startRealtime(
     emit reconnectChanged();
     process_.setArguments(last_realtime_arguments_);
     process_.start();
+}
+
+void RealtimeController::previewFile(const QString& path) {
+    if (path.isEmpty() || !QFileInfo::exists(path)) {
+        set_status(QStringLiteral("参考音频不存在"));
+        return;
+    }
+    if (preview_effect_ == nullptr) {
+        preview_effect_ = new QSoundEffect(this);
+        preview_effect_->setVolume(1.0);
+        connect(
+            preview_effect_,
+            &QSoundEffect::playingChanged,
+            this,
+            [this] {
+                const bool playing = preview_effect_->isPlaying();
+                if (previewing_ != playing) {
+                    previewing_ = playing;
+                    emit previewChanged();
+                    if (!playing) {
+                        set_status(QStringLiteral("试听完成"));
+                    }
+                }
+            }
+        );
+    }
+    if (preview_effect_->isPlaying()) {
+        preview_effect_->stop();
+    }
+    preview_effect_->setSource(QUrl::fromLocalFile(path));
+    preview_effect_->play();
+    if (!previewing_) {
+        previewing_ = true;
+        emit previewChanged();
+    }
+    set_status(QStringLiteral("正在试听音色"));
 }
 
 void RealtimeController::stop() {

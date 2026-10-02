@@ -9,6 +9,8 @@
 #include <QTimer>
 #include <QVariantList>
 
+class QSoundEffect;
+
 class RealtimeController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
@@ -126,6 +128,9 @@ public:
         const QString& voicePack,
         int outputDevice
     );
+    // Play a pack reference WAV in-process so previewing is instant instead of
+    // paying Python startup (numpy/scipy imports) on every click.
+    Q_INVOKABLE void previewFile(const QString& path);
     Q_INVOKABLE void testMicrophone(int inputDevice, int outputDevice);
     Q_INVOKABLE void checkRoute();
     // Live microphone level for the settings meter, without a conversion
@@ -165,6 +170,7 @@ private:
 
     QProcess process_;
     QProcess preview_process_;
+    QSoundEffect* preview_effect_{nullptr};
     QProcess route_process_;
     QProcess device_process_;
     QTimer restart_timer_;

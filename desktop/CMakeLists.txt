@@ -1,4 +1,4 @@
-find_package(Qt6 6.8 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2 Multimedia)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -54,12 +54,11 @@ qt_add_qml_module(panda_desktop
         qml/components/SettingRow.qml
         qml/components/LevelMeter.qml
         qml/components/AppConfirmDialog.qml
-        qml/components/TopTab.qml
         qml/components/SegmentedControl.qml
         qml/components/StatusPill.qml
         qml/components/VoiceCard.qml
+        qml/AppSettingsDialog.qml
         qml/pages/VoiceLibraryPage.qml
-        qml/pages/SettingsPage.qml
 )
 
 qt_add_resources(panda_desktop "panda_app_assets"
@@ -76,6 +75,7 @@ target_link_libraries(panda_desktop
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::QuickDialogs2
+        Qt6::Multimedia
 )
 
 set_target_properties(panda_desktop PROPERTIES

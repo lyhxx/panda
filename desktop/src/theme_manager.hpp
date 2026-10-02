@@ -28,6 +28,6 @@ signals:
 private:
     void refresh_system_scheme(bool notify);
 
-    QString mode_{QStringLiteral("dark")};
+    QString mode_{QStringLiteral("system")};
     bool system_dark_{true};
 };

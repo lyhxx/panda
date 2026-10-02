@@ -13,6 +13,7 @@ Item {
     required property string kind
     required property string folderPath
     required property string iconPath
+    required property string referencePath
     required property bool isFavorite
 
     signal deleteRequested(string packId, string packName)
@@ -146,10 +147,7 @@ Item {
             iconName: "play"
             tooltip: qsTr("试听")
             enabled: root.canInteract && !realtimeController.previewing
-            onClicked: realtimeController.previewVoicePack(
-                root.folderPath,
-                AppState.selectedOutputDevice
-            )
+            onClicked: realtimeController.previewFile(root.referencePath)
         }
 
         AppIconButton {

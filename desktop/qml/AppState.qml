@@ -8,7 +8,8 @@ import QtQuick
 QtObject {
     id: state
 
-    property string currentPage: "voices"   // "voices" | "settings"
+    property string currentPage: "voices"   // kept for compatibility
+    property bool settingsOpen: false
     property string settingsTab: "audio"    // "audio" | "general"
 
     property string selectedPack: ""

@@ -86,6 +86,25 @@ QVariant PackListModel::data(const QModelIndex& index, int role) const {
             }
             return QString::fromStdWString(icon.wstring());
         }
+        case ReferencePathRole: {
+            const auto preferred =
+                entry.path / "reference" / "reference.wav";
+            std::error_code error;
+            if (std::filesystem::is_regular_file(preferred, error)) {
+                return QString::fromStdWString(preferred.wstring());
+            }
+            const auto directory = entry.path / "reference";
+            if (std::filesystem::is_directory(directory, error)) {
+                for (const auto& item :
+                     std::filesystem::directory_iterator(directory, error)) {
+                    if (item.is_regular_file() &&
+                        item.path().extension() == ".wav") {
+                        return QString::fromStdWString(item.path().wstring());
+                    }
+                }
+            }
+            return {};
+        }
         case IsFavoriteRole:
             return favorites_.contains(from_utf8(entry.manifest.id));
         default:
@@ -102,6 +121,7 @@ QHash<int, QByteArray> PackListModel::roleNames() const {
         {KindRole, "kind"},
         {FolderPathRole, "folderPath"},
         {IconPathRole, "iconPath"},
+        {ReferencePathRole, "referencePath"},
         {IsFavoriteRole, "isFavorite"},
     };
 }

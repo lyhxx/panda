@@ -52,7 +52,7 @@ Item {
 
             AppTextField {
                 Layout.preferredWidth: 260
-                placeholderText: qsTr("搜索名称或 ID")
+                placeholderText: qsTr("搜索名称或拼音")
                 leadingIcon: "search"
                 text: packListModel.filter
                 onTextEdited: packListModel.filter = text

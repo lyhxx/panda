@@ -137,7 +137,7 @@ ApplicationWindow {
     // Keep a live microphone meter running while the audio settings are shown,
     // so the user does not need to start a conversion just to see input level.
     function syncMicMonitor() {
-        const watching = AppState.currentPage === "settings"
+        const watching = AppState.settingsOpen
                          && AppState.settingsTab === "audio"
                          && !realtimeController.running
                          && AppState.selectedInputDevice >= 0
@@ -222,7 +222,7 @@ ApplicationWindow {
     Connections {
         target: AppState
 
-        function onCurrentPageChanged() { root.syncMicMonitor() }
+        function onSettingsOpenChanged() { root.syncMicMonitor() }
         function onSettingsTabChanged() { root.syncMicMonitor() }
         function onSelectedInputDeviceChanged() {
             root.syncMicMonitor()
@@ -288,38 +288,15 @@ ApplicationWindow {
                         Layout.alignment: Qt.AlignVCenter
                     }
 
-                    Rectangle {
-                        Layout.alignment: Qt.AlignVCenter
-                        Layout.leftMargin: Theme.space3
-                        implicitWidth: navRow.implicitWidth + 8
-                        implicitHeight: 38
-                        radius: height / 2
-                        color: Theme.glass
-                        border.width: 1
-                        border.color: Theme.glassBorder
-
-                        RowLayout {
-                            id: navRow
-                            anchors.centerIn: parent
-                            spacing: 3
-
-                            TopTab {
-                                icon: "waveform"
-                                text: qsTr("音色库")
-                                selected: AppState.currentPage === "voices"
-                                onClicked: AppState.currentPage = "voices"
-                            }
-
-                            TopTab {
-                                icon: "sliders"
-                                text: qsTr("音频设置")
-                                selected: AppState.currentPage === "settings"
-                                onClicked: AppState.currentPage = "settings"
-                            }
-                        }
-                    }
-
                     Item { Layout.fillWidth: true }
+
+                    AppIconButton {
+                        iconName: "sliders"
+                        iconSize: 17
+                        size: 34
+                        tooltip: qsTr("设置")
+                        onClicked: AppState.settingsOpen = true
+                    }
 
                     SegmentedControl {
                         Layout.alignment: Qt.AlignVCenter
@@ -351,15 +328,10 @@ ApplicationWindow {
                 }
             }
 
-            // ---- Pages ---------------------------------------------------
-            StackLayout {
+            // ---- Page ----------------------------------------------------
+            VoiceLibraryPage {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: AppState.currentPage === "voices" ? 0 : 1
-
-                VoiceLibraryPage { }
-
-                SettingsPage { }
             }
         }
 
@@ -369,7 +341,7 @@ ApplicationWindow {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 18
             spacing: 10
-            visible: AppState.currentPage === "voices"
+            visible: true
 
             // Status / metrics
             RowLayout {
@@ -441,11 +413,13 @@ ApplicationWindow {
                     iconName: "sliders"
                     tooltipAbove: true
                     tooltip: qsTr("更多设置")
-                    onClicked: AppState.currentPage = "settings"
+                    onClicked: AppState.settingsOpen = true
                 }
             }
         }
     }
+
+    AppSettingsDialog { }
 
     // ---- Frameless resize handles ---------------------------------------
     MouseArea {
