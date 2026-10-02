@@ -2,18 +2,18 @@
 
 开源、免费、本地优先的实时变声器**客户端**（Qt 6 / QML + C++20）。
 
-这个仓库只包含软件本身，**不包含音频处理引擎和模型**：
+这个仓库只包含软件本身，**不包含音频处理引擎**：
 
 | 仓库 | 地址 | 内容 |
 | --- | --- | --- |
 | **panda**（本仓库） | https://github.com/lyhxx/panda | 桌面界面、C++ 核心、音色包校验/安装、打包与安装脚本 |
 | **panda-engine** | https://github.com/lyhxx/panda-engine | 音频处理引擎（Python：实时会话、DSP、降噪、音色包导出） |
-| **panda-models** | https://github.com/lyhxx/panda-models | 处理后的模型（ONNX / 微调模型 / 默认音色包） |
 
 > 相关仓库
 >
 > - 引擎：[github.com/lyhxx/panda-engine](https://github.com/lyhxx/panda-engine)
-> - 模型：[github.com/lyhxx/panda-models](https://github.com/lyhxx/panda-models)
+
+音色（声音模型）涉及授权，**只保存在本地 `voices` 目录，不进入任何仓库**。
 
 ## 目录
 
