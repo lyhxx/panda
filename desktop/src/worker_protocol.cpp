@@ -129,16 +129,22 @@ QStringList build_realtime_arguments(const RealtimeOptions& options) {
                   << QString::number(options.monitor_device);
     }
     if (!options.input_device_name.isEmpty()) {
-        arguments << QStringLiteral("--input-name")
-                  << options.input_device_name;
+        arguments << QStringLiteral("--input-name-b64")
+                  << QString::fromLatin1(
+                         options.input_device_name.toUtf8().toBase64()
+                     );
     }
     if (!options.output_device_name.isEmpty()) {
-        arguments << QStringLiteral("--output-name")
-                  << options.output_device_name;
+        arguments << QStringLiteral("--output-name-b64")
+                  << QString::fromLatin1(
+                         options.output_device_name.toUtf8().toBase64()
+                     );
     }
     if (!options.monitor_device_name.isEmpty()) {
-        arguments << QStringLiteral("--monitor-name")
-                  << options.monitor_device_name;
+        arguments << QStringLiteral("--monitor-name-b64")
+                  << QString::fromLatin1(
+                         options.monitor_device_name.toUtf8().toBase64()
+                     );
     }
     if (options.prefill_chunks >= 0) {
         arguments << QStringLiteral("--prefill-chunks")

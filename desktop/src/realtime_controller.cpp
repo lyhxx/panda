@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcessEnvironment>
 #include <QSoundEffect>
 #include <QTimer>
 #include <QUrl>
@@ -25,18 +26,47 @@ QString device_name_for(const QVariantList& devices, int id) {
     return {};
 }
 
+// The dev launcher prepends Qt's bin to PATH so the app can find Qt DLLs. That
+// also makes scipy/torch load a conflicting DLL and hang (verified with a
+// stack dump: the worker blocked importing scipy.linalg.blas). Give the Python
+// children a PATH without the Qt bin entry.
+QProcessEnvironment python_process_environment() {
+    auto environment = QProcessEnvironment::systemEnvironment();
+    const auto path = environment.value(QStringLiteral("PATH"));
+    QStringList kept;
+    for (const auto& entry : path.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+        auto lower = entry.toLower();
+        while (lower.endsWith(QLatin1Char('\\')) ||
+               lower.endsWith(QLatin1Char('/'))) {
+            lower.chop(1);
+        }
+        if (lower.contains(QStringLiteral("qt")) &&
+            lower.endsWith(QStringLiteral("bin"))) {
+            continue;
+        }
+        kept.append(entry);
+    }
+    environment.insert(QStringLiteral("PATH"), kept.join(QLatin1Char(';')));
+    return environment;
+}
+
 }  // namespace
 
 RealtimeController::RealtimeController(QObject* parent)
     : QObject(parent) {
+    const auto python_environment = python_process_environment();
     process_.setProcessChannelMode(QProcess::MergedChannels);
     process_.setProgram(qEnvironmentVariable("PANDA_PYTHON", "python"));
+    process_.setProcessEnvironment(python_environment);
     preview_process_.setProcessChannelMode(QProcess::MergedChannels);
     preview_process_.setProgram(qEnvironmentVariable("PANDA_PYTHON", "python"));
+    preview_process_.setProcessEnvironment(python_environment);
     route_process_.setProcessChannelMode(QProcess::SeparateChannels);
     route_process_.setProgram(qEnvironmentVariable("PANDA_PYTHON", "python"));
+    route_process_.setProcessEnvironment(python_environment);
     device_process_.setProcessChannelMode(QProcess::SeparateChannels);
     device_process_.setProgram(qEnvironmentVariable("PANDA_PYTHON", "python"));
+    device_process_.setProcessEnvironment(python_environment);
     restart_timer_.setSingleShot(true);
     stability_timer_.setSingleShot(true);
     stability_timer_.setInterval(10000);
@@ -289,6 +319,7 @@ RealtimeController::RealtimeController(QObject* parent)
 
     level_process_.setProgram(qEnvironmentVariable("PANDA_PYTHON", "python"));
     level_process_.setProcessChannelMode(QProcess::SeparateChannels);
+    level_process_.setProcessEnvironment(python_environment);
     connect(
         &level_process_,
         &QProcess::readyReadStandardOutput,
