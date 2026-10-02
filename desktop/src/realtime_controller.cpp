@@ -112,15 +112,12 @@ RealtimeController::RealtimeController(QObject* parent)
                     emit readyChanged();
                 }
                 startRealtime(
-                    pending_voice_pack_.isEmpty()
-                        ? last_voice_pack_
-                        : pending_voice_pack_,
+                    last_voice_pack_,
                     last_model_,
                     last_device_,
                     pending_input_device_,
                     pending_output_device_
                 );
-                pending_voice_pack_.clear();
                 emit runningChanged();
                 return;
             }
@@ -840,15 +837,22 @@ void RealtimeController::restartRealtime(int inputDevice, int outputDevice) {
     );
 }
 
-void RealtimeController::restartVoicePack(const QString& voicePack) {
-    if (!running()) {
+void RealtimeController::loadVoicePack(const QString& voicePack) {
+    if (voicePack.isEmpty()) {
         return;
     }
-    pending_restart_ = true;
-    pending_voice_pack_ = voicePack;
-    pending_input_device_ = last_input_device_;
-    pending_output_device_ = last_output_device_;
-    stop();
+    last_voice_pack_ = voicePack;
+    if (!running()) {
+        // Nothing is loaded yet; the next start receives it as an argument.
+        return;
+    }
+    const QJsonObject payload{
+        {QStringLiteral("voice_pack"), voicePack},
+    };
+    process_.write(
+        QJsonDocument(payload).toJson(QJsonDocument::Compact) +
+        QByteArrayLiteral("\n")
+    );
 }
 
 void RealtimeController::push_live_controls() {
@@ -872,6 +876,7 @@ void RealtimeController::push_live_controls() {
         {QStringLiteral("denoise_level"), denoise_level_},
         {QStringLiteral("prefill_chunks"), prefill_chunks_},
         {QStringLiteral("max_backlog_chunks"), max_backlog_chunks_},
+        {QStringLiteral("voice_pack"), last_voice_pack_},
     };
     const auto line =
         QJsonDocument(payload).toJson(QJsonDocument::Compact) + QByteArrayLiteral("\n");
@@ -1098,6 +1103,8 @@ void RealtimeController::schedule_reconnect() {
 void RealtimeController::append_log(const QString& value) {
     if (value.contains(QStringLiteral("[audio]")) ||
         value.contains(QStringLiteral("[panda.ready]")) ||
+        value.contains(QStringLiteral("[panda.voice]")) ||
+        value.contains(QStringLiteral("[panda.progress]")) ||
         value.contains(QStringLiteral("error")) ||
         value.contains(QStringLiteral("Exception"))) {
         QFile log(QDir::tempPath() + QStringLiteral("/panda_events.log"));

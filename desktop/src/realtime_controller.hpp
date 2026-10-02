@@ -129,9 +129,10 @@ public:
     // Stops and starts the worker again, keeping the current voice/model.
     // Reserved for changes that genuinely need a reload.
     Q_INVOKABLE void restartRealtime(int inputDevice, int outputDevice);
-    // Restart the session with a different voice pack: the speaker embedding
-    // is baked in at startup, so switching voice needs a reload.
-    Q_INVOKABLE void restartVoicePack(const QString& voicePack);
+    // The speaker embedding is the only voice-dependent part of a loaded
+    // model, so switching pack asks the live worker to recompute it instead
+    // of restarting the process (~1s instead of ~20s).
+    Q_INVOKABLE void loadVoicePack(const QString& voicePack);
     Q_INVOKABLE void previewVoicePack(
         const QString& voicePack,
         int outputDevice
@@ -220,7 +221,6 @@ private:
     int last_input_device_{-1};
     int last_output_device_{-1};
     bool pending_restart_{false};
-    QString pending_voice_pack_;
     int pending_input_device_{-1};
     int pending_output_device_{-1};
     bool stop_requested_{false};

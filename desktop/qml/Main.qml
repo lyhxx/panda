@@ -229,7 +229,7 @@ ApplicationWindow {
             // The speaker embedding is baked in at startup, so switching the
             // voice needs a reload; do it automatically if we are running.
             if (realtimeController.running) {
-                realtimeController.restartVoicePack(AppState.selectedPack)
+                realtimeController.loadVoicePack(AppState.selectedPack)
             }
         }
         function onSelectedInputDeviceChanged() {
@@ -392,8 +392,14 @@ ApplicationWindow {
 
                 StatusPill {
                     visible: realtimeController.hasStats
-                    text: qsTr("RTF %1").arg(
-                        realtimeController.realtimeFactor.toFixed(2)
+                    // Glass-to-glass: whatever is queued for playback plus the
+                    // time the current chunk still needs. RTF alone did not
+                    // tell the user how far behind real time they are.
+                    text: qsTr("延迟 %1ms").arg(
+                        Math.round(
+                            realtimeController.bufferMs
+                            + realtimeController.processingMs
+                        )
                     )
                 }
 
