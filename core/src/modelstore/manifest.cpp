@@ -301,6 +301,12 @@ Status validate_pack_root(
             return status;
         }
     }
+    if (!manifest.icon.empty()) {
+        status = validate_manifest_path(manifest.icon);
+        if (!status.ok()) {
+            return status;
+        }
+    }
 
     std::set<std::string> expected;
     for (const auto& file : manifest.files) {

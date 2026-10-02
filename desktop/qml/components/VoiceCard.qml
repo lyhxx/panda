@@ -12,6 +12,7 @@ Item {
     required property string engine
     required property string kind
     required property string folderPath
+    required property string iconPath
     required property bool isFavorite
 
     signal deleteRequested(string packId, string packName)
@@ -53,6 +54,7 @@ Item {
             width: 90
             height: 90
             radius: width / 2
+            visible: root.iconPath.length === 0
             gradient: Gradient {
                 GradientStop {
                     position: 0.0
@@ -80,6 +82,21 @@ Item {
                 font.weight: Font.DemiBold
                 font.family: Theme.fontFamily
             }
+        }
+
+        Image {
+            anchors.centerIn: parent
+            width: 90
+            height: 90
+            visible: root.iconPath.length > 0
+            source: root.iconPath.length > 0
+                    ? "file:///" + root.iconPath.replace(/\\/g, "/")
+                    : ""
+            sourceSize.width: 180
+            sourceSize.height: 180
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
         }
 
         AppIconButton {

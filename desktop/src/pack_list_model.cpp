@@ -75,6 +75,17 @@ QVariant PackListModel::data(const QModelIndex& index, int role) const {
             return from_utf8(entry.manifest.kind);
         case FolderPathRole:
             return QString::fromStdWString(entry.path.wstring());
+        case IconPathRole: {
+            if (entry.manifest.icon.empty()) {
+                return {};
+            }
+            const auto icon = entry.path / std::filesystem::path(entry.manifest.icon);
+            std::error_code error;
+            if (!std::filesystem::is_regular_file(icon, error)) {
+                return {};
+            }
+            return QString::fromStdWString(icon.wstring());
+        }
         case IsFavoriteRole:
             return favorites_.contains(from_utf8(entry.manifest.id));
         default:
@@ -90,6 +101,7 @@ QHash<int, QByteArray> PackListModel::roleNames() const {
         {EngineRole, "engine"},
         {KindRole, "kind"},
         {FolderPathRole, "folderPath"},
+        {IconPathRole, "iconPath"},
         {IsFavoriteRole, "isFavorite"},
     };
 }

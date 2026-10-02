@@ -34,6 +34,7 @@ public:
         EngineRole,
         KindRole,
         FolderPathRole,
+        IconPathRole,
         IsFavoriteRole,
     };
     Q_ENUM(Role)
