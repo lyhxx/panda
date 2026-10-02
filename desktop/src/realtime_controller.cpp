@@ -4,6 +4,8 @@
 #include "worker_protocol.hpp"
 #include "windows_volume.hpp"
 
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -1074,6 +1076,16 @@ void RealtimeController::schedule_reconnect() {
 }
 
 void RealtimeController::append_log(const QString& value) {
+    if (value.contains(QStringLiteral("[audio]")) ||
+        value.contains(QStringLiteral("[panda.ready]")) ||
+        value.contains(QStringLiteral("error")) ||
+        value.contains(QStringLiteral("Exception"))) {
+        QFile log(QDir::tempPath() + QStringLiteral("/panda_events.log"));
+        if (log.open(QIODevice::Append | QIODevice::Text)) {
+            log.write(value.toUtf8());
+            log.close();
+        }
+    }
     metric_line_buffer_ += value;
 
     bool log_changed = false;

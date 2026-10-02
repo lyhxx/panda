@@ -83,6 +83,15 @@ ComboBox {
         padding: 0
         highlighted: control.highlightedIndex === index
 
+        // Qt's default ComboBox delegate wires selection + activated(); with a
+        // custom delegate that wiring is lost, so clicking an entry changed the
+        // highlight but never told the app (and thus the worker) about it.
+        onClicked: {
+            control.currentIndex = index
+            control.activated(index)
+            control.popup.close()
+        }
+
         contentItem: Text {
             leftPadding: 12
             rightPadding: 30
