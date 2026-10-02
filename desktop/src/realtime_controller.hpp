@@ -16,6 +16,7 @@ class RealtimeController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
     Q_PROPERTY(bool ready READ ready NOTIFY readyChanged)
+    Q_PROPERTY(int startupProgress READ startupProgress NOTIFY startupProgressChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString logText READ logText NOTIFY logTextChanged)
     Q_PROPERTY(QVariantList inputDevices READ inputDevices NOTIFY devicesChanged)
@@ -62,6 +63,7 @@ public:
 
     [[nodiscard]] bool running() const;
     [[nodiscard]] bool ready() const;
+    [[nodiscard]] int startupProgress() const;
     [[nodiscard]] QString status() const;
     [[nodiscard]] QString logText() const;
     [[nodiscard]] QVariantList inputDevices() const;
@@ -127,6 +129,9 @@ public:
     // Stops and starts the worker again, keeping the current voice/model.
     // Reserved for changes that genuinely need a reload.
     Q_INVOKABLE void restartRealtime(int inputDevice, int outputDevice);
+    // Restart the session with a different voice pack: the speaker embedding
+    // is baked in at startup, so switching voice needs a reload.
+    Q_INVOKABLE void restartVoicePack(const QString& voicePack);
     Q_INVOKABLE void previewVoicePack(
         const QString& voicePack,
         int outputDevice
@@ -151,6 +156,7 @@ public:
 signals:
     void runningChanged();
     void readyChanged();
+    void startupProgressChanged();
     void statusChanged();
     void logTextChanged();
     void devicesChanged();
@@ -214,6 +220,7 @@ private:
     int last_input_device_{-1};
     int last_output_device_{-1};
     bool pending_restart_{false};
+    QString pending_voice_pack_;
     int pending_input_device_{-1};
     int pending_output_device_{-1};
     bool stop_requested_{false};
@@ -224,6 +231,7 @@ private:
     bool mic_testing_{false};
     bool mic_monitoring_{false};
     bool ready_{false};
+    int startup_progress_{0};
     QProcess level_process_;
     QString level_buffer_;
     int level_input_device_{-1};

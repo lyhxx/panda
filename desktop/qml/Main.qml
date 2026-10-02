@@ -225,6 +225,13 @@ ApplicationWindow {
 
         function onSettingsOpenChanged() { root.syncMicMonitor() }
         function onSettingsTabChanged() { root.syncMicMonitor() }
+        function onSelectedPackChanged() {
+            // The speaker embedding is baked in at startup, so switching the
+            // voice needs a reload; do it automatically if we are running.
+            if (realtimeController.running) {
+                realtimeController.restartVoicePack(AppState.selectedPack)
+            }
+        }
         function onSelectedInputDeviceChanged() {
             root.syncMicMonitor()
             root.pushLiveDevices()
@@ -364,9 +371,18 @@ ApplicationWindow {
                 }
 
                 Text {
-                    text: realtimeController.status.length > 0
-                          ? realtimeController.status
-                          : qsTr("选择音色后点击「开启变声」")
+                    text: {
+                        if (realtimeController.running && !realtimeController.ready) {
+                            return realtimeController.startupProgress > 0
+                                   ? qsTr("正在加载模型… %1%").arg(
+                                       realtimeController.startupProgress
+                                   )
+                                   : realtimeController.status
+                        }
+                        return realtimeController.status.length > 0
+                               ? realtimeController.status
+                               : qsTr("选择音色后点击「开启变声」")
+                    }
                     color: realtimeController.running
                            ? Theme.success
                            : Theme.textSecondary

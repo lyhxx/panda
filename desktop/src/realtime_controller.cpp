@@ -86,7 +86,9 @@ RealtimeController::RealtimeController(QObject* parent)
         [this] {
             stability_timer_.start();
             ready_ = false;
+            startup_progress_ = 0;
             emit readyChanged();
+            emit startupProgressChanged();
             set_status(QStringLiteral("正在加载模型…"));
             // A reconnect reuses the last arguments, which may predate live
             // gain/denoise/device changes. Push the current values as soon as
@@ -110,12 +112,15 @@ RealtimeController::RealtimeController(QObject* parent)
                     emit readyChanged();
                 }
                 startRealtime(
-                    last_voice_pack_,
+                    pending_voice_pack_.isEmpty()
+                        ? last_voice_pack_
+                        : pending_voice_pack_,
                     last_model_,
                     last_device_,
                     pending_input_device_,
                     pending_output_device_
                 );
+                pending_voice_pack_.clear();
                 emit runningChanged();
                 return;
             }
@@ -359,6 +364,10 @@ bool RealtimeController::running() const {
 
 bool RealtimeController::ready() const {
     return ready_;
+}
+
+int RealtimeController::startupProgress() const {
+    return startup_progress_;
 }
 
 QString RealtimeController::status() const {
@@ -831,6 +840,17 @@ void RealtimeController::restartRealtime(int inputDevice, int outputDevice) {
     );
 }
 
+void RealtimeController::restartVoicePack(const QString& voicePack) {
+    if (!running()) {
+        return;
+    }
+    pending_restart_ = true;
+    pending_voice_pack_ = voicePack;
+    pending_input_device_ = last_input_device_;
+    pending_output_device_ = last_output_device_;
+    stop();
+}
+
 void RealtimeController::push_live_controls() {
     if (!running()) {
         return;
@@ -1122,6 +1142,20 @@ void RealtimeController::consume_log_line(
     if (panda::desktop::is_metrics_line(line)) {
         // Metrics are surfaced as numbers; keep them out of the log pane.
         parse_metric_line(line);
+        return;
+    }
+
+    static const QString progress_prefix =
+        QStringLiteral("[panda.progress]");
+    if (line.trimmed().startsWith(progress_prefix)) {
+        const auto document = QJsonDocument::fromJson(
+            line.trimmed().mid(progress_prefix.size()).trimmed().toUtf8()
+        );
+        if (document.isObject()) {
+            startup_progress_ =
+                document.object().value(QStringLiteral("percent")).toInt(0);
+            emit startupProgressChanged();
+        }
         return;
     }
 
