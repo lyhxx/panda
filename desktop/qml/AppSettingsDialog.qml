@@ -134,7 +134,7 @@ Popup {
                                 textRole: "label"
                                 valueRole: "id"
                                 enabled: count > 0
-                                currentIndex: (count, indexOfValue(AppState.selectedInputDevice))
+                                desiredValue: AppState.selectedInputDevice
                                 onActivated: AppState.selectedInputDevice = currentValue
                             }
                             AppIconButton {
@@ -190,7 +190,7 @@ Popup {
                             )
                             textRole: "label"
                             valueRole: "id"
-                            currentIndex: (count, indexOfValue(AppState.selectedOutputDevice))
+                            desiredValue: AppState.selectedOutputDevice
                             onActivated: AppState.selectedOutputDevice = currentValue
                         }
 
@@ -351,7 +351,7 @@ Popup {
                             ]
                             textRole: "label"
                             valueRole: "value"
-                            currentIndex: (count, indexOfValue(realtimeController.denoiseLevel))
+                            desiredValue: realtimeController.denoiseLevel
                             onActivated: realtimeController.denoiseLevel = currentValue
                         }
                     }
