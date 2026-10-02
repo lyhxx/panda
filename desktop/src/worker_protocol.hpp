@@ -12,6 +12,12 @@ struct RealtimeOptions {
     QString device{"cpu"};
     int input_device{-1};
     int output_device{-1};
+    // Friendly names, resolved to the current index by the worker. PortAudio
+    // renumbers devices between processes, so these are what actually select
+    // the right device.
+    QString input_device_name;
+    QString output_device_name;
+    QString monitor_device_name;
     // When set, the worker captures but renders nothing to an output device;
     // monitoring can still play the converted voice.
     bool output_disabled{false};

@@ -62,8 +62,10 @@ QtObject {
     function deviceKey(devices, deviceId) {
         if (deviceId < 0) {
             // Persist the explicit "none" choice (不输出 / 不监听) so it is not
-            // replaced by a default on the next launch.
-            return "none"
+            // replaced by a default on the next launch. When the list is empty
+            // the enumeration has not finished (or failed); return empty so a
+            // shutdown cannot clobber a real choice with "none".
+            return devices.length > 0 ? "none" : ""
         }
         for (let i = 0; i < devices.length; ++i) {
             if (devices[i].id === deviceId) {

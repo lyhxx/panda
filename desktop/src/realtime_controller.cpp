@@ -13,6 +13,20 @@
 #include <QUrl>
 #include <QVariantMap>
 
+namespace {
+
+QString device_name_for(const QVariantList& devices, int id) {
+    for (const auto& value : devices) {
+        const auto map = value.toMap();
+        if (map.value(QStringLiteral("id")).toInt() == id) {
+            return map.value(QStringLiteral("deviceName")).toString();
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
 RealtimeController::RealtimeController(QObject* parent)
     : QObject(parent) {
     process_.setProcessChannelMode(QProcess::MergedChannels);
@@ -140,7 +154,10 @@ RealtimeController::RealtimeController(QObject* parent)
         &QTimer::timeout,
         this,
         [this] {
-            if (running() && reconnect_attempts_ != 0) {
+            // Only forgive the attempts once the worker actually became ready.
+            // A worker that merely runs (still loading) and then crashes every
+            // cycle must not reset the counter, or reconnect loops forever.
+            if (running() && ready_ && reconnect_attempts_ != 0) {
                 reconnect_attempts_ = 0;
                 emit reconnectChanged();
             }
@@ -450,6 +467,9 @@ void RealtimeController::setMonitorDevice(int value) {
         return;
     }
     monitor_device_ = value;
+    last_options_.monitor_device = value;
+    last_options_.monitor_device_name =
+        device_name_for(output_devices_, value);
     emit settingsChanged();
     push_live_controls();
 }
@@ -620,6 +640,10 @@ void RealtimeController::startRealtime(
         set_status(QStringLiteral("音色包缺少 manifest.json"));
         return;
     }
+    if (inputDevice < 0) {
+        set_status(QStringLiteral("请先在设置里选择麦克风"));
+        return;
+    }
     if (outputDevice < 0 && monitor_device_ < 0) {
         set_status(QStringLiteral("已选择「不输出」，且没有开启监听，变声无处输出"));
         return;
@@ -649,6 +673,10 @@ void RealtimeController::startRealtime(
     options.input_device = inputDevice;
     options.output_device = outputDevice;
     options.output_disabled = outputDevice < 0;
+    options.input_device_name = device_name_for(input_devices_, inputDevice);
+    options.output_device_name = device_name_for(output_devices_, outputDevice);
+    options.monitor_device_name =
+        device_name_for(output_devices_, monitor_device_);
     options.prefill_chunks = prefill_chunks_;
     options.max_backlog_chunks = max_backlog_chunks_;
     options.monitor_device = monitor_device_;
@@ -784,6 +812,9 @@ void RealtimeController::push_live_controls() {
         {QStringLiteral("input_device"), last_input_device_},
         {QStringLiteral("output_device"), last_output_device_},
         {QStringLiteral("monitor_device"), monitor_device_},
+        {QStringLiteral("input_device_name"), last_options_.input_device_name},
+        {QStringLiteral("output_device_name"), last_options_.output_device_name},
+        {QStringLiteral("monitor_device_name"), last_options_.monitor_device_name},
         {QStringLiteral("denoise"), denoise_},
         {QStringLiteral("denoise_level"), denoise_level_},
         {QStringLiteral("prefill_chunks"), prefill_chunks_},
@@ -802,24 +833,13 @@ void RealtimeController::updateLiveDevices(int inputDevice, int outputDevice) {
     last_options_.input_device = inputDevice;
     last_options_.output_device = outputDevice;
     last_options_.output_disabled = outputDevice < 0;
+    last_options_.input_device_name = device_name_for(input_devices_, inputDevice);
+    last_options_.output_device_name =
+        device_name_for(output_devices_, outputDevice);
     last_realtime_arguments_ =
         panda::desktop::build_realtime_arguments(last_options_);
     push_live_controls();
 }
-
-namespace {
-
-QString device_name_for(const QVariantList& devices, int id) {
-    for (const auto& value : devices) {
-        const auto map = value.toMap();
-        if (map.value(QStringLiteral("id")).toInt() == id) {
-            return map.value(QStringLiteral("deviceName")).toString();
-        }
-    }
-    return {};
-}
-
-}  // namespace
 
 double RealtimeController::deviceVolume(int deviceId, bool output) const {
     const auto name = device_name_for(
@@ -1141,4 +1161,3 @@ void RealtimeController::set_device_error(const QString& value) {
     device_error_ = value;
     emit deviceErrorChanged();
 }
-
