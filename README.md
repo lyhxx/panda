@@ -4,11 +4,16 @@
 
 这个仓库只包含软件本身，**不包含音频处理引擎和模型**：
 
-| 仓库 | 内容 |
-| --- | --- |
-| **panda**（本仓库） | 桌面界面、C++ 核心、音色包校验/安装、打包与安装脚本 |
-| **panda-engine** | 音频处理引擎（Python：实时会话、DSP、降噪、音色包导出） |
-| **panda-models** | 处理后的模型（ONNX / 微调模型 / 默认音色包） |
+| 仓库 | 地址 | 内容 |
+| --- | --- | --- |
+| **panda**（本仓库） | https://github.com/lyhxx/panda | 桌面界面、C++ 核心、音色包校验/安装、打包与安装脚本 |
+| **panda-engine** | https://github.com/lyhxx/panda-engine | 音频处理引擎（Python：实时会话、DSP、降噪、音色包导出） |
+| **panda-models** | https://github.com/lyhxx/panda-models | 处理后的模型（ONNX / 微调模型 / 默认音色包） |
+
+> 相关仓库
+>
+> - 引擎：[github.com/lyhxx/panda-engine](https://github.com/lyhxx/panda-engine)
+> - 模型：[github.com/lyhxx/panda-models](https://github.com/lyhxx/panda-models)
 
 ## 目录
 
