@@ -27,8 +27,24 @@ Popup {
         }
         AppState.selectedMonitorDevice = AppState.firstDeviceId(
             AppState.filteredDevices(realtimeController.outputDevices),
-            realtimeController.defaultOutputDevice
+            realtimeController.defaultOutputDevice,
+            realtimeController.outputDevices
         )
+    }
+
+    // The endpoint monitoring will actually play on, resolved the same way
+    // setMonitoring() resolves it so the caption never promises a device the
+    // switch does not use. "Headphones" was hardcoded before, which is a lie
+    // on a machine whose system default is the speakers -- or worse, once the
+    // default id used to fall through onto the virtual cable itself.
+    readonly property string monitorTargetName: {
+        const outputs = AppState.filteredDevices(realtimeController.outputDevices)
+        const id = AppState.firstDeviceId(outputs,
+                                           realtimeController.defaultOutputDevice,
+                                           realtimeController.outputDevices)
+        const name = AppState.deviceNameOf(realtimeController.outputDevices, id)
+        const cut = name.indexOf(" (")
+        return cut > 0 ? name.substring(0, cut) : name
     }
 
     property real systemMicVolume: 80
@@ -337,7 +353,9 @@ Popup {
                                     font.family: Theme.fontFamily
                                 }
                                 Text {
-                                    text: qsTr("用系统默认输出（耳机）听自己的变声；开启变声后生效。")
+                                    text: dialog.monitorTargetName.length > 0
+                                          ? qsTr("用系统默认输出（%1）听自己的变声；开启变声后生效。").arg(dialog.monitorTargetName)
+                                          : qsTr("用系统默认输出听自己的变声；开启变声后生效。")
                                     color: Theme.textTertiary
                                     font.pixelSize: Theme.fontSmall
                                     font.family: Theme.fontFamily

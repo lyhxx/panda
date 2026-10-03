@@ -154,7 +154,8 @@ ApplicationWindow {
         }
         const outputs = AppState.filteredDevices(realtimeController.outputDevices)
         const fallback = AppState.firstDeviceId(
-            outputs, realtimeController.defaultOutputDevice
+            outputs, realtimeController.defaultOutputDevice,
+            realtimeController.outputDevices
         )
         AppState.selectedMonitorDevice = root.lastMonitorDevice >= 0
             ? root.lastMonitorDevice
@@ -213,7 +214,8 @@ ApplicationWindow {
             }
             AppState.selectedInputDevice = inputId >= 0
                 ? inputId
-                : AppState.firstDeviceId(inputs, realtimeController.defaultInputDevice)
+                : AppState.firstDeviceId(inputs, realtimeController.defaultInputDevice,
+                                         realtimeController.inputDevices)
             AppState.pendingInputDeviceKey = ""
 
             let outputId = AppState.resolveDeviceId(outputs, AppState.pendingOutputDeviceKey)
@@ -226,7 +228,8 @@ ApplicationWindow {
                 ? outputId
                 : (AppState.pendingOutputDeviceKey === "none"
                    ? -1
-                   : AppState.firstDeviceId(outputs, realtimeController.defaultOutputDevice))
+                   : AppState.firstDeviceId(outputs, realtimeController.defaultOutputDevice,
+                                            realtimeController.outputDevices))
             AppState.pendingOutputDeviceKey = ""
 
             let monitorId = AppState.resolveDeviceId(outputs, AppState.pendingMonitorDeviceKey)
@@ -476,7 +479,7 @@ ApplicationWindow {
                     tooltipAbove: true
                     tooltip: root.monitorOn
                              ? qsTr("关闭监听（当前：%1）").arg(root.monitorDeviceName())
-                             : qsTr("开启监听：开始变声后用耳机听自己的变声")
+                             : qsTr("开启监听：开始变声后用系统默认输出听自己的变声")
                     onClicked: root.toggleMonitor()
                 }
 

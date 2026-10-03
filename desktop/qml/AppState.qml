@@ -163,9 +163,40 @@ QtObject {
         return -1
     }
 
-    function firstDeviceId(devices, preferred) {
+    // The system default is an index into the full enumeration, which on this
+    // machine sits on MME while the picker only lists WASAPI -- two different
+    // numberings that never meet. Resolve it by device name across host APIs,
+    // and when even that fails, fall back to the first endpoint the user can
+    // actually hear. The old code fell through to devices[0], which after a
+    // VB-CABLE install is CABLE In 16ch: monitoring then played into the very
+    // line the output was already using, and the headphones stayed silent.
+    function deviceNameOf(devices, id) {
+        for (let i = 0; i < devices.length; ++i) {
+            if (devices[i].id === id) {
+                return devices[i].deviceName
+            }
+        }
+        return ""
+    }
+
+    function firstDeviceId(devices, preferred, allDevices) {
         if (containsDevice(devices, preferred)) {
             return preferred
+        }
+        if (allDevices !== undefined && preferred >= 0) {
+            const name = deviceNameOf(allDevices, preferred)
+            if (name.length > 0) {
+                for (let i = 0; i < devices.length; ++i) {
+                    if (devices[i].deviceName === name) {
+                        return devices[i].id
+                    }
+                }
+            }
+        }
+        for (let j = 0; j < devices.length; ++j) {
+            if (devices[j].isVirtual !== true) {
+                return devices[j].id
+            }
         }
         return devices.length > 0 ? devices[0].id : -1
     }
