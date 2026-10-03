@@ -62,8 +62,6 @@ class RealtimeController final : public QObject {
     Q_PROPERTY(QString previewName READ previewName NOTIFY previewNameChanged)
     Q_PROPERTY(bool micTesting READ micTesting NOTIFY micTestingChanged)
     Q_PROPERTY(bool micMonitoring READ micMonitoring NOTIFY micMonitoringChanged)
-    Q_PROPERTY(QString routeReport READ routeReport NOTIFY routeReportChanged)
-    Q_PROPERTY(bool checkingRoute READ checkingRoute NOTIFY routeReportChanged)
 
 public:
     explicit RealtimeController(QObject* parent = nullptr);
@@ -123,8 +121,6 @@ public:
     [[nodiscard]] QString previewName() const;
     [[nodiscard]] bool micTesting() const;
     [[nodiscard]] bool micMonitoring() const;
-    [[nodiscard]] QString routeReport() const;
-    [[nodiscard]] bool checkingRoute() const;
 
     Q_INVOKABLE void refreshDevices();
     Q_INVOKABLE void startRealtime(
@@ -159,7 +155,6 @@ public:
     // clicking another pack swaps the audio instead of being ignored.
     Q_INVOKABLE void previewFile(const QString& path, const QString& displayName);
     Q_INVOKABLE void testMicrophone(int inputDevice, int outputDevice);
-    Q_INVOKABLE void checkRoute();
     // Live microphone level for the settings meter, without a conversion
     // session. Safe to call repeatedly: an unchanged device is a no-op.
     Q_INVOKABLE void startMicMonitor(int inputDevice);
@@ -186,7 +181,6 @@ signals:
     void previewNameChanged();
     void micTestingChanged();
     void micMonitoringChanged();
-    void routeReportChanged();
 
 private:
     void append_log(const QString& value);
@@ -206,7 +200,6 @@ private:
     QProcess process_;
     QProcess preview_process_;
     QSoundEffect* preview_effect_{nullptr};
-    QProcess route_process_;
     QProcess device_process_;
     QTimer restart_timer_;
     QTimer stability_timer_;
@@ -256,7 +249,5 @@ private:
     QProcess level_process_;
     QString level_buffer_;
     int level_input_device_{-1};
-    QString route_report_;
-    bool checking_route_{false};
 };
 

@@ -221,15 +221,6 @@ QStringList build_mic_test_arguments(
     return arguments;
 }
 
-QStringList build_route_check_arguments() {
-    return {
-        QStringLiteral("-m"),
-        QStringLiteral("panda_cli"),
-        QStringLiteral("route-check"),
-        QStringLiteral("--json"),
-    };
-}
-
 bool is_metrics_line(const QString& line) {
     static const QString prefix = QString::fromLatin1(
         panda::audio::kMetricsPrefix.data(),

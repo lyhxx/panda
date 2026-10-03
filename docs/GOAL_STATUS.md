@@ -721,6 +721,12 @@ Build Panda as an open-source real-time voice changer with:
 - On the development host it correctly reports that no writable virtual cable
   is installed, which explains why other applications cannot hear the
   converted voice yet
+- Later reversed: the settings-page button and its warning box were removed
+  together with the controller path behind them. The device payload already
+  carries `is_virtual`, so the picker labels virtual outputs itself, the host
+  API filter can no longer drop a virtual endpoint, and one plain line appears
+  when the machine has no virtual card at all. The `route-check` command stays
+  in the terminal for pairing both ends.
 
 ### Status Summary
 

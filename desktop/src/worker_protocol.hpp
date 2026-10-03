@@ -87,8 +87,6 @@ struct LatencySettings {
     int output_device
 );
 
-[[nodiscard]] QStringList build_route_check_arguments();
-
 // True when a line from the worker carries `[panda.metrics]` JSON. Those
 // lines feed the numeric display and must stay out of the log pane, otherwise
 // the pane is flooded at two lines per second.

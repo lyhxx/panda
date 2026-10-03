@@ -13,6 +13,12 @@ Popup {
             realtimeController.outputDevices,
             AppState.selectedOutputDevice
         )
+    // True while the picker can offer a virtual endpoint at all. When it
+    // cannot, the one thing worth saying is that other applications will stay
+    // silent, so that single line replaces the old warning box.
+    property bool hasVirtualOutput: AppState.anyVirtualDevice(
+        AppState.filteredDevices(realtimeController.outputDevices)
+    )
 
     function setMonitoring(on) {
         if (!on) {
@@ -240,66 +246,25 @@ Popup {
                             }
                         }
 
+                        Text {
+                            // No virtual endpoint exists on this machine, so
+                            // the picker has nothing to offer for other
+                            // applications. That one line is the whole
+                            // explanation: no box, no button to press.
+                            visible: !dialog.hasVirtualOutput
+                            text: qsTr("未检测到虚拟声卡，其它软件听不到；安装 VB-CABLE 后这里可选。")
+                            color: Theme.textTertiary
+                            font.pixelSize: Theme.fontSmall
+                            font.family: Theme.fontFamily
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
                         TickMeter {
                             Layout.fillWidth: true
                             stretch: true
                             value: Math.min(realtimeController.outputPeak, 1)
                             clipped: realtimeController.outputClipped
-                        }
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            visible: AppState.selectedOutputDevice >= 0
-                                     && !dialog.deviceIsVirtual
-                            implicitHeight: outputWarning.implicitHeight + 18
-                            radius: Theme.radiusControl
-                            color: Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.12)
-                            border.width: 1
-                            border.color: Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3)
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: 9
-                                spacing: 8
-                                Icon {
-                                    name: "alert"
-                                    color: Theme.warning
-                                    implicitWidth: 16
-                                    implicitHeight: 16
-                                    Layout.alignment: Qt.AlignTop
-                                }
-                                Text {
-                                    id: outputWarning
-                                    Layout.fillWidth: true
-                                    text: qsTr("当前输出不是虚拟声卡，其它软件听不到；仅适合本机试听。")
-                                    color: Theme.warning
-                                    font.pixelSize: Theme.fontSmall
-                                    font.family: Theme.fontFamily
-                                    wrapMode: Text.WordWrap
-                                }
-                            }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Theme.space3
-
-                            AppButton {
-                                text: realtimeController.checkingRoute
-                                      ? qsTr("检查中…")
-                                      : qsTr("检查虚拟声卡路由")
-                                iconName: "route"
-                                enabled: !realtimeController.checkingRoute
-                                onClicked: realtimeController.checkRoute()
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: realtimeController.routeReport
-                                color: Theme.textSecondary
-                                font.pixelSize: Theme.fontSmall
-                                font.family: Theme.fontFamily
-                                wrapMode: Text.WordWrap
-                            }
                         }
 
                         RowLayout {

@@ -63,9 +63,6 @@ RealtimeController::RealtimeController(QObject* parent)
     preview_process_.setProcessChannelMode(QProcess::MergedChannels);
     preview_process_.setProgram(qEnvironmentVariable("PANDA_PYTHON", "python"));
     preview_process_.setProcessEnvironment(python_environment);
-    route_process_.setProcessChannelMode(QProcess::SeparateChannels);
-    route_process_.setProgram(qEnvironmentVariable("PANDA_PYTHON", "python"));
-    route_process_.setProcessEnvironment(python_environment);
     device_process_.setProcessChannelMode(QProcess::SeparateChannels);
     device_process_.setProgram(qEnvironmentVariable("PANDA_PYTHON", "python"));
     device_process_.setProcessEnvironment(python_environment);
@@ -249,53 +246,6 @@ RealtimeController::RealtimeController(QObject* parent)
                         : QStringLiteral("试听失败，退出码 %1").arg(code)
                 );
             }
-        }
-    );
-    connect(
-        &route_process_,
-        qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-        this,
-        [this](int code, QProcess::ExitStatus status) {
-            checking_route_ = false;
-            if (status != QProcess::NormalExit || code != 0) {
-                route_report_ = QStringLiteral(
-                    "没有检测到可写入的虚拟声卡。请安装 VB-CABLE 或 VoiceMeeter，"
-                    "然后重新检查。"
-                );
-            }
-            else {
-                const auto document = QJsonDocument::fromJson(
-                    route_process_.readAllStandardOutput()
-                );
-                const auto routes = document.object()
-                                        .value(QStringLiteral("routes"))
-                                        .toArray();
-                QStringList lines;
-                for (const auto& value : routes) {
-                    const auto route = value.toObject();
-                    lines.append(
-                        QStringLiteral("Panda 输出：%1\n其它软件麦克风：%2")
-                            .arg(route.value(QStringLiteral("render")).toString())
-                            .arg(route.value(QStringLiteral("capture")).toString())
-                    );
-                }
-                route_report_ = lines.isEmpty()
-                    ? QStringLiteral("没有检测到可用路由。")
-                    : lines.join(QStringLiteral("\n\n"));
-            }
-            emit routeReportChanged();
-        }
-    );
-    connect(
-        &route_process_,
-        &QProcess::errorOccurred,
-        this,
-        [this](QProcess::ProcessError) {
-            checking_route_ = false;
-            route_report_ = QStringLiteral("路由检查启动失败：%1").arg(
-                route_process_.errorString()
-            );
-            emit routeReportChanged();
         }
     );
     connect(
@@ -671,14 +621,6 @@ bool RealtimeController::micMonitoring() const {
     return mic_monitoring_;
 }
 
-QString RealtimeController::routeReport() const {
-    return route_report_;
-}
-
-bool RealtimeController::checkingRoute() const {
-    return checking_route_;
-}
-
 void RealtimeController::refreshDevices() {
     if (device_process_.state() != QProcess::NotRunning) {
         return;
@@ -1038,19 +980,6 @@ void RealtimeController::testMicrophone(
         )
     );
     preview_process_.start();
-}
-
-void RealtimeController::checkRoute() {
-    if (checking_route_ || route_process_.state() != QProcess::NotRunning) {
-        return;
-    }
-    checking_route_ = true;
-    route_report_ = QStringLiteral("正在检查虚拟声卡路由…");
-    emit routeReportChanged();
-    route_process_.setArguments(
-        panda::desktop::build_route_check_arguments()
-    );
-    route_process_.start();
 }
 
 void RealtimeController::startMicMonitor(int inputDevice) {

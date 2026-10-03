@@ -55,7 +55,31 @@ QtObject {
         // hardware, some virtual cards) only appear under another host API.
         // Rather than hide them behind a setting, fall back automatically when
         // WASAPI exposes nothing at all.
-        return filtered.length > 0 ? filtered : devices
+        if (filtered.length === 0) {
+            return devices
+        }
+        // A virtual cable can surface under another host API. It is the only
+        // route to other applications, so it is always added back; a picker
+        // that silently omits it is the same dead end as before.
+        for (let j = 0; j < devices.length; ++j) {
+            if (devices[j].isVirtual === true
+                && filtered.indexOf(devices[j]) < 0) {
+                filtered.push(devices[j])
+            }
+        }
+        return filtered
+    }
+
+    // Whether the picker has a virtual endpoint to offer at all. When it has
+    // not, no choice on screen reaches other applications, and that one line
+    // is what replaces the warning box.
+    function anyVirtualDevice(devices) {
+        for (let i = 0; i < devices.length; ++i) {
+            if (devices[i].isVirtual === true) {
+                return true
+            }
+        }
+        return false
     }
 
     function deviceKey(devices, deviceId) {

@@ -9,7 +9,6 @@ using panda::desktop::RealtimeOptions;
 using panda::desktop::build_realtime_arguments;
 using panda::desktop::build_preview_arguments;
 using panda::desktop::build_mic_test_arguments;
-using panda::desktop::build_route_check_arguments;
 using panda::desktop::clamp_denoise_level;
 using panda::desktop::clamp_gate_db;
 using panda::desktop::clamp_latency;
@@ -57,7 +56,6 @@ private slots:
     void decides_when_to_restart_a_crashed_worker();
     void builds_the_preview_invocation();
     void builds_the_microphone_test_invocation();
-    void builds_the_route_check_invocation();
     void includes_denoise_only_when_enabled();
     void clamps_the_denoise_level();
 };
@@ -320,15 +318,6 @@ void WorkerProtocolTest::builds_the_microphone_test_invocation() {
         value_of(arguments, QStringLiteral("--output-device")),
         QStringLiteral("8")
     );
-}
-
-void WorkerProtocolTest::builds_the_route_check_invocation() {
-    const auto arguments = build_route_check_arguments();
-
-    QCOMPARE(arguments.at(0), QStringLiteral("-m"));
-    QCOMPARE(arguments.at(1), QStringLiteral("panda_cli"));
-    QCOMPARE(arguments.at(2), QStringLiteral("route-check"));
-    QVERIFY(arguments.contains(QStringLiteral("--json")));
 }
 
 void WorkerProtocolTest::includes_denoise_only_when_enabled() {

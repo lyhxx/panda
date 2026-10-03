@@ -31,16 +31,27 @@ DeviceList parse_device_payload(const QByteArray& value) {
         const auto host_name = hostapi >= 0 && hostapi < hostapis.size()
             ? hostapis.at(hostapi).toString()
             : QStringLiteral("unknown");
-        const auto label = QStringLiteral("#%1 %2 · %3")
+        const auto is_virtual =
+            device.value(QStringLiteral("is_virtual")).toBool(false);
+        // Virtual endpoints are marked in the picker itself. The user makes
+        // the choice there, so that is where "this one reaches other apps"
+        // has to be readable -- the warning that used to follow the choice
+        // only told them it was wrong.
+        const auto label = QStringLiteral("#%1 %2%3 · %4")
                                .arg(id)
-                               .arg(name, host_name);
+                               .arg(name)
+                               .arg(
+                                   is_virtual
+                                       ? QStringLiteral("（虚拟声卡）")
+                                       : QString()
+                               )
+                               .arg(host_name);
         const auto entry = QVariantMap{
             {QStringLiteral("id"), id},
             {QStringLiteral("label"), label},
             {QStringLiteral("deviceName"), name},
             {QStringLiteral("hostApi"), host_name},
-            {QStringLiteral("isVirtual"),
-             device.value(QStringLiteral("is_virtual")).toBool(false)},
+            {QStringLiteral("isVirtual"), is_virtual},
         };
         if (device.value(QStringLiteral("max_input_channels")).toInt() > 0) {
             result.inputs.append(entry);

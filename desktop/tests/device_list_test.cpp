@@ -1,6 +1,6 @@
 // Headless tests for the device payload parser behind the output-device
-// picker. The virtual-device flag is what lets the UI warn that a plain
-// speaker will not be heard by other applications.
+// picker. The virtual-device flag marks the endpoints other applications can
+// hear: it labels them in the picker and keeps them from being filtered out.
 
 #include "device_list.hpp"
 
@@ -79,6 +79,18 @@ void DeviceListTest::marks_virtual_devices() {
     QVERIFY(!parsed.outputs.at(1).toMap().value("isVirtual").toBool());
     // A device without the flag must not be assumed virtual.
     QVERIFY(!parsed.outputs.at(2).toMap().value("isVirtual").toBool());
+    // The marker is what the user reads in the picker: a virtual endpoint has
+    // to be recognisable there, since nothing warns them afterwards.
+    QVERIFY(
+        parsed.outputs.at(0).toMap().value("label").toString().contains(
+            QStringLiteral("虚拟声卡")
+        )
+    );
+    QVERIFY(
+        !parsed.outputs.at(1).toMap().value("label").toString().contains(
+            QStringLiteral("虚拟声卡")
+        )
+    );
 }
 
 void DeviceListTest::rejects_invalid_json() {
