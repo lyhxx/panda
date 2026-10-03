@@ -17,6 +17,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_windows.ps1"
+UNINSTALL_SCRIPT = REPO_ROOT / "scripts" / "uninstall_windows.ps1"
 
 
 def powershell_executable() -> str | None:
@@ -145,6 +146,78 @@ class WindowsInstallerTest(unittest.TestCase):
         self.assertTrue(info.is_file(), f"missing {info}")
         return json.loads(info.read_text(encoding="utf-8-sig"))
 
+    def run_uninstaller(self, install: Path, *extra: str):
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if key != "PSModulePath"
+        }
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        environment["PSModulePath"] = os.pathsep.join(
+            str(path)
+            for path in (
+                Path(system_root)
+                / "system32"
+                / "WindowsPowerShell"
+                / "v1.0"
+                / "Modules",
+                Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+                / "WindowsPowerShell"
+                / "Modules",
+                Path(os.environ.get("USERPROFILE", ""))
+                / "Documents"
+                / "WindowsPowerShell"
+                / "Modules",
+            )
+        )
+        # The uninstaller also removes the Start Menu entry, which lives
+        # under APPDATA: point it at the scratch directory so a test can
+        # never touch the real one.
+        fake_appdata = self.root / "appdata"
+        fake_appdata.mkdir(parents=True, exist_ok=True)
+        environment["APPDATA"] = str(fake_appdata)
+        return subprocess.run(
+            [
+                self.powershell,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(UNINSTALL_SCRIPT),
+                "-InstallDirectory",
+                str(install),
+                *extra,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=environment,
+        )
+
+    def build_installed_tree(self) -> Path:
+        install = self.root / "install"
+        app = install / "app"
+        app.mkdir(parents=True)
+        (app / "panda_desktop.exe").write_bytes(b"MZ fake executable")
+        voice = install / "voices" / "my-pack"
+        voice.mkdir(parents=True)
+        (voice / "manifest.json").write_text(
+            '{"id": "my-pack"}', encoding="utf-8"
+        )
+        (install / "install.json").write_text(
+            json.dumps(
+                {
+                    "version": "1.0.0",
+                    "previous_version": None,
+                    "voice_directory": str(install / "voices"),
+                }
+            ),
+            encoding="utf-8",
+        )
+        return install
+
     def test_fresh_install_copies_the_package(self) -> None:
         package = build_fake_package(self.root)
         install = self.root / "install"
@@ -258,6 +331,32 @@ class WindowsInstallerTest(unittest.TestCase):
             refused.stderr + refused.stdout,
         )
         self.assertFalse((install / "app").exists())
+
+
+    def test_uninstall_preserves_voice_packs(self) -> None:
+        # The default layout keeps the voice library INSIDE the install root;
+        # uninstall without -RemoveVoices must take the application out and
+        # leave the voices behind (it used to delete everything while
+        # printing that the packs had been preserved).
+        install = self.build_installed_tree()
+
+        completed = self.run_uninstaller(install)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertFalse((install / "app").exists())
+        self.assertFalse((install / "install.json").exists())
+        self.assertTrue(
+            (install / "voices" / "my-pack" / "manifest.json").is_file(),
+            "voice packs must survive an uninstall",
+        )
+
+    def test_uninstall_with_remove_voices_takes_everything(self) -> None:
+        install = self.build_installed_tree()
+
+        completed = self.run_uninstaller(install, "-RemoveVoices")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertFalse(install.exists())
 
 
 if __name__ == "__main__":

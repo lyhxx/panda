@@ -22,7 +22,7 @@ class ExportVoicePackTest(unittest.TestCase):
     def test_export_with_existing_feature(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)
-            wav_path = root / "reference.wav"
+            wav_path = root / "original-take.wav"
             feature_path = root / "spk_emb.npy"
             output = root / "pack"
             self.make_wav(wav_path)
@@ -54,6 +54,16 @@ class ExportVoicePackTest(unittest.TestCase):
             self.assertEqual(manifest["id"], "manbo")
             self.assertEqual(manifest["format"], "panda.voice-pack")
             self.assertEqual(manifest["engine"], "meanvc2")
+
+            # The pack is distributed as-is: the original recording's file
+            # name is local context the recipient has no business seeing,
+            # so it must not ride along in any shipped metadata.
+            register_text = (
+                output / "assets" / "register.json"
+            ).read_text(encoding="utf-8")
+            self.assertNotIn("source_name", register_text)
+            self.assertNotIn("original-take", register_text)
+            self.assertNotIn("original-take", json.dumps(manifest))
 
             with zipfile.ZipFile(output.with_suffix(".zip")) as archive:
                 names = archive.namelist()
