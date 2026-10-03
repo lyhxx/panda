@@ -103,6 +103,46 @@ class ExportVoicePackTest(unittest.TestCase):
             self.assertEqual(info.channels, 1)
 
 
+    def test_failed_overwrite_keeps_previous_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            wav_path = root / "reference.wav"
+            feature_path = root / "spk_emb.npy"
+            output = root / "pack"
+            self.make_wav(wav_path)
+            feature_path.write_bytes(b"\x93NUMPYtest-feature")
+
+            args = [
+                "--name",
+                "覆盖测试",
+                "--id",
+                "overwrite-test",
+                "--audio",
+                str(wav_path),
+                "--feature-file",
+                str(feature_path),
+                "--output",
+                str(output),
+                "--overwrite",
+            ]
+            self.assertEqual(main(args), 0)
+            manifest_before = (output / "manifest.json").read_bytes()
+            zip_before = output.with_suffix(".zip").read_bytes()
+
+            # The icon is validated mid-build; failing there used to leave
+            # neither the old pack nor a new one.
+            with self.assertRaises(FileNotFoundError):
+                main(args + ["--icon", str(root / "missing.png")])
+
+            self.assertEqual(
+                (output / "manifest.json").read_bytes(), manifest_before
+            )
+            self.assertEqual(
+                output.with_suffix(".zip").read_bytes(), zip_before
+            )
+            self.assertFalse((root / "pack.partial").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
 

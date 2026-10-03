@@ -458,6 +458,48 @@ void test_remove_refuses_a_mismatched_directory() {
     assert(fs::exists(voices / "other-pack"));
 }
 
+void test_expansion_limits_are_enforced() {
+    std::cerr << "test: expansion limits\n";
+    const auto fixture = make_fixture("limits", false);
+    const auto voices = fixture.root / "voices";
+    panda::modelstore::InstallOptions options;
+    panda::modelstore::InstallResult result;
+
+    // A declared file larger than the per-file cap is refused before the
+    // voice root is even created -- nothing is extracted, nothing is staged.
+    options.max_file_bytes = 4;
+    auto status = panda::modelstore::install_voice_pack(
+        fixture.archive,
+        voices,
+        options,
+        result
+    );
+    assert(status.code == ErrorCode::limit_exceeded);
+    assert(!fs::exists(voices));
+
+    // And so is the sum of the declared sizes over the total cap.
+    options.max_file_bytes = 1024ULL * 1024ULL;
+    options.max_total_bytes = 8;
+    status = panda::modelstore::install_voice_pack(
+        fixture.archive,
+        voices,
+        options,
+        result
+    );
+    assert(status.code == ErrorCode::limit_exceeded);
+    assert(!fs::exists(voices));
+
+    // The default limits still accept the real pack.
+    options = panda::modelstore::InstallOptions{};
+    status = panda::modelstore::install_voice_pack(
+        fixture.archive,
+        voices,
+        options,
+        result
+    );
+    assert(status.ok());
+}
+
 }  // namespace
 
 int main() {
@@ -483,6 +525,7 @@ int main() {
     report("remove-pack", test_remove_voice_pack);
     report("remove-safety", test_remove_rejects_unknown_and_unsafe_ids);
     report("remove-mismatch", test_remove_refuses_a_mismatched_directory);
+    report("expansion-limits", test_expansion_limits_are_enforced);
 #endif
     // CTest matches this marker. Without it a run that dies early could still
     // be reported as a pass, because that failure mode exits with status 0.

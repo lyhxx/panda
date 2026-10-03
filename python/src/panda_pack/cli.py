@@ -57,12 +57,25 @@ def wav_metadata(path: Path) -> dict[str, object]:
         return {"format": "unknown"}
 
 
-def ensure_empty_or_overwrite(path: Path, overwrite: bool) -> None:
+def ensure_output_available(path: Path, overwrite: bool) -> None:
+    if path.exists() and not overwrite:
+        raise FileExistsError(f"输出目录已存在：{path}；如需覆盖请添加 --overwrite")
+
+
+def begin_staging(path: Path) -> Path:
+    """Create the scratch directory the build runs in, beside the target."""
+    staging = path.parent / (path.name + ".partial")
+    if staging.exists():
+        shutil.rmtree(staging)  # leftover from an interrupted run
+    staging.mkdir(parents=True)
+    return staging
+
+
+def finish_staging(staging: Path, path: Path) -> None:
+    """Swap the staged build into place; the old artifact goes only now."""
     if path.exists():
-        if not overwrite:
-            raise FileExistsError(f"输出目录已存在：{path}；如需覆盖请添加 --overwrite")
         shutil.rmtree(path)
-    path.mkdir(parents=True, exist_ok=True)
+    staging.rename(path)
 
 
 def copy_references(audio_paths: Iterable[Path], root: Path) -> list[dict[str, object]]:
@@ -337,10 +350,40 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
     args = build_parser(prog).parse_args(argv)
     pack_id = safe_id(args.id)
-    output = Path(args.output or Path("dist") / pack_id).expanduser().resolve()
+    final_output = Path(args.output or Path("dist") / pack_id).expanduser().resolve()
     audio_paths = [Path(item) for item in args.audio]
 
-    ensure_empty_or_overwrite(output, args.overwrite)
+    ensure_output_available(final_output, args.overwrite)
+
+    # Build in a staging directory and swap it in only once the pack is
+    # complete. --overwrite used to delete the previous artifact up front, so
+    # any later failure (bad audio, a missing icon, a failed feature extract)
+    # left the user with nothing at all.
+    output = begin_staging(final_output)
+    try:
+        build_pack(args, pack_id, audio_paths, output)
+    except BaseException:
+        shutil.rmtree(output, ignore_errors=True)
+        raise
+    finish_staging(output, final_output)
+
+    zip_path = final_output.with_suffix(".zip")
+    if not args.no_zip:
+        build_zip(final_output, zip_path)
+
+    print(f"音色包目录：{final_output}")
+    if not args.no_zip:
+        print(f"音色包 ZIP：{zip_path}")
+    print(f"音色 ID：{pack_id}")
+    return 0
+
+
+def build_pack(
+    args: "argparse.Namespace",
+    pack_id: str,
+    audio_paths: list[Path],
+    output: Path,
+) -> None:
     references = copy_references(audio_paths, output)
 
     assets = output / "assets"
@@ -421,16 +464,6 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
     manifest_path = output / "manifest.json"
     manifest["files"] = collect_files(output, {manifest_path})
     write_json(manifest_path, manifest)
-
-    zip_path = output.with_suffix(".zip")
-    if not args.no_zip:
-        build_zip(output, zip_path)
-
-    print(f"音色包目录：{output}")
-    if not args.no_zip:
-        print(f"音色包 ZIP：{zip_path}")
-    print(f"音色 ID：{pack_id}")
-    return 0
 
 
 if __name__ == "__main__":

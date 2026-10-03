@@ -266,6 +266,117 @@ Status move_directory(
     return Status::success();
 }
 
+std::uint16_t le16(const char* data) {
+    const auto* bytes = reinterpret_cast<const unsigned char*>(data);
+    return static_cast<std::uint16_t>(bytes[0]) |
+           (static_cast<std::uint16_t>(bytes[1]) << 8U);
+}
+
+std::uint32_t le32(const char* data) {
+    const auto* bytes = reinterpret_cast<const unsigned char*>(data);
+    return static_cast<std::uint32_t>(bytes[0]) |
+           (static_cast<std::uint32_t>(bytes[1]) << 8U) |
+           (static_cast<std::uint32_t>(bytes[2]) << 16U) |
+           (static_cast<std::uint32_t>(bytes[3]) << 24U);
+}
+
+// Declared uncompressed size of every entry, read from the zip central
+// directory. This is the only way to enforce the expansion limits *before*
+// extracting: the archive list (`tar -tf`) carries names but no sizes, and
+// checking afterwards means a high-ratio bomb already filled the disk. The
+// product contract is a ZIP (every error message and the file dialog say
+// so), and the archive size cap keeps us clear of zip64 records.
+Status declared_zip_sizes(
+    const std::filesystem::path& archive,
+    std::vector<std::uintmax_t>& sizes
+) {
+    sizes.clear();
+
+    std::ifstream input(archive, std::ios::binary);
+    if (!input) {
+        return Status::error(
+            ErrorCode::io_error,
+            "failed to open the voice pack archive"
+        );
+    }
+    input.seekg(0, std::ios::end);
+    const auto length = static_cast<std::uint64_t>(input.tellg());
+    // End-of-central-directory record: fixed 22 bytes plus up to 64 KiB of
+    // comment, so it lives within the last 65557 bytes of the file.
+    if (length < 22) {
+        return Status::error(ErrorCode::invalid_archive, "truncated zip archive");
+    }
+    const auto tail_length = std::min<std::uint64_t>(length, 65557U);
+    input.seekg(static_cast<std::streamoff>(length - tail_length));
+    std::string tail(static_cast<std::size_t>(tail_length), '\0');
+    input.read(tail.data(), static_cast<std::streamsize>(tail_length));
+    if (input.gcount() != static_cast<std::streamsize>(tail_length)) {
+        return Status::error(ErrorCode::invalid_archive, "truncated zip archive");
+    }
+
+    const std::string eocd_signature("\x50\x4B\x05\x06", 4);
+    std::size_t eocd = std::string::npos;
+    for (std::size_t at = tail.size() - 22;; --at) {
+        if (tail.compare(at, 4, eocd_signature) == 0) {
+            const auto comment = le16(tail.data() + at + 20);
+            if (at + 22 + comment <= tail.size()) {
+                eocd = at;
+                break;
+            }
+        }
+        if (at == 0) {
+            break;
+        }
+    }
+    if (eocd == std::string::npos) {
+        return Status::error(
+            ErrorCode::invalid_archive,
+            "voice pack is not a zip archive"
+        );
+    }
+
+    const auto directory_size = le32(tail.data() + eocd + 12);
+    const auto directory_offset = le32(tail.data() + eocd + 16);
+    if (directory_offset > length ||
+        static_cast<std::uint64_t>(directory_size) > length - directory_offset) {
+        return Status::error(
+            ErrorCode::invalid_archive,
+            "zip central directory is out of range"
+        );
+    }
+
+    std::string directory(directory_size, '\0');
+    input.seekg(static_cast<std::streamoff>(directory_offset));
+    input.read(directory.data(), static_cast<std::streamsize>(directory_size));
+    if (input.gcount() != static_cast<std::streamsize>(directory_size)) {
+        return Status::error(ErrorCode::invalid_archive, "truncated zip central directory");
+    }
+
+    std::size_t at = 0;
+    while (at + 46 <= directory.size()) {
+        if (le32(directory.data() + at) != 0x02014B50U) {
+            return Status::error(
+                ErrorCode::invalid_archive,
+                "corrupt zip central directory"
+            );
+        }
+        const auto name_length = le16(directory.data() + at + 28);
+        const auto extra_length = le16(directory.data() + at + 30);
+        const auto comment_length = le16(directory.data() + at + 32);
+        // 0xFFFFFFFF marks a zip64 record: the file exceeds 4 GiB, far past
+        // any cap, and is rejected downstream as such.
+        sizes.push_back(le32(directory.data() + at + 24));
+        at += 46U + name_length + extra_length + comment_length;
+    }
+    if (at != directory.size()) {
+        return Status::error(
+            ErrorCode::invalid_archive,
+            "corrupt zip central directory"
+        );
+    }
+    return Status::success();
+}
+
 }  // namespace
 
 Status list_archive_entries(
@@ -335,6 +446,32 @@ Status install_voice_pack(
     }
     if (entries.size() > options.max_file_count) {
         return Status::error(ErrorCode::limit_exceeded, "voice pack contains too many entries");
+    }
+
+    // Enforce the declared expansion limits before extracting anything: a
+    // small high-ratio archive must not get the chance to fill the disk
+    // first (InstallOptions::max_file_bytes / max_total_bytes existed but
+    // were never actually checked).
+    std::vector<std::uintmax_t> declared_sizes;
+    status = declared_zip_sizes(archive, declared_sizes);
+    if (!status.ok()) {
+        return status;
+    }
+    std::uintmax_t expanded_bytes = 0;
+    for (const auto declared : declared_sizes) {
+        if (declared > options.max_file_bytes) {
+            return Status::error(
+                ErrorCode::limit_exceeded,
+                "voice pack contains a file that is too large"
+            );
+        }
+        expanded_bytes += declared;
+        if (expanded_bytes > options.max_total_bytes) {
+            return Status::error(
+                ErrorCode::limit_exceeded,
+                "voice pack expands beyond the size limit"
+            );
+        }
     }
 
     std::filesystem::create_directories(voices_root, error);

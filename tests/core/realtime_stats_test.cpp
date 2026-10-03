@@ -94,4 +94,15 @@ void run_realtime_stats_tests() {
     assert(!panda::audio::parse_realtime_stats(
         R"([panda.metrics] {"chunk":1})"
     ).has_value());
+    // A present-but-wrong-typed field must read as "not clipped", not throw:
+    // nlohmann's value() raises type_error on the mismatch, which would
+    // escape into the Qt event loop and terminate the app.
+    const auto bad_types = panda::audio::parse_realtime_stats(
+        R"([panda.metrics] {"chunk":1,"processing_ms":100.0,)"
+        R"("chunk_ms":160.0,"buffer_ms":50.0,)"
+        R"("input_clipped":"yes","output_clipped":1})"
+    );
+    assert(bad_types.has_value());
+    assert(!bad_types->input_clipped);
+    assert(!bad_types->output_clipped);
 }

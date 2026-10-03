@@ -126,12 +126,17 @@ QVariant PackListModel::data(const QModelIndex& index, int role) const {
             }
             const auto directory = entry.path / "reference";
             if (std::filesystem::is_directory(directory, error)) {
-                for (const auto& item :
-                     std::filesystem::directory_iterator(directory, error)) {
-                    if (item.is_regular_file() &&
-                        item.path().extension() == ".wav") {
-                        return QString::fromStdWString(item.path().wstring());
+                // error_code iteration: a throwing ++ inside model data()
+                // would escape into the Qt event loop.
+                std::filesystem::directory_iterator it(directory, error);
+                const std::filesystem::directory_iterator finish;
+                while (!error && it != finish) {
+                    std::error_code item_error;
+                    if (it->is_regular_file(item_error) && !item_error &&
+                        it->path().extension() == ".wav") {
+                        return QString::fromStdWString(it->path().wstring());
                     }
+                    it.increment(error);
                 }
             }
             return {};

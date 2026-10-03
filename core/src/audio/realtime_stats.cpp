@@ -84,6 +84,14 @@ std::optional<RealtimeStats> parse_metrics_line(std::string_view line) {
         overrun = overrun_field->get<bool>();
     }
 
+    // nlohmann's value() throws type_error when the field exists with the
+    // wrong type; a malformed metrics line must never take the app down.
+    const auto clipped = [&parsed](const char* key) {
+        const auto found = parsed.find(key);
+        return found != parsed.end() && found->is_boolean() &&
+               found->get<bool>();
+    };
+
     return RealtimeStats{
         .chunk_index = json_counter(parsed, "chunk"),
         .processing_ms = *processing,
@@ -96,8 +104,8 @@ std::optional<RealtimeStats> parse_metrics_line(std::string_view line) {
         .input_peak = json_number(parsed, "input_peak").value_or(0.0),
         .output_rms = json_number(parsed, "output_rms").value_or(0.0),
         .output_peak = json_number(parsed, "output_peak").value_or(0.0),
-        .input_clipped = parsed.value("input_clipped", false),
-        .output_clipped = parsed.value("output_clipped", false),
+        .input_clipped = clipped("input_clipped"),
+        .output_clipped = clipped("output_clipped"),
         .starved_reads = json_counter(parsed, "starved_reads"),
         .underrun_frames = json_counter(parsed, "underrun_frames"),
         .dropped_frames = json_counter(parsed, "dropped_frames"),

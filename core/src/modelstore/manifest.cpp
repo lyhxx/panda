@@ -82,8 +82,10 @@ Status verify_required_asset(
             std::string(description) + " has an unsafe path"
         );
     }
+    std::error_code file_error;
     if (!std::filesystem::is_regular_file(
-            root / utf8_path(relative)
+            root / utf8_path(relative),
+            file_error
         )) {
         return Status::error(
             ErrorCode::invalid_manifest,

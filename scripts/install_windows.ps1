@@ -212,16 +212,21 @@ Copy-Item -Path (Join-Path $source "*") -Destination $applicationRoot -Recurse -
 Remove-Item -LiteralPath (Join-Path $applicationRoot "portable") -Force `
     -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $voiceRoot -Force | Out-Null
-Set-Content `
-    -LiteralPath (Join-Path $applicationRoot "voices-path.txt") `
-    -Value $voiceRoot `
-    -Encoding Utf8
+# Write UTF-8 without a BOM: the desktop reads this file with fromUtf8 and
+# a BOM would end up glued to the front of the path.
+[IO.File]::WriteAllText(
+    (Join-Path $applicationRoot "voices-path.txt"),
+    $voiceRoot,
+    (New-Object System.Text.UTF8Encoding($false))
+)
 
+# Deliberately does NOT embed $voiceRoot: it can contain non-ASCII characters
+# (user names), which the Ascii-encoded batch file cannot carry. The desktop
+# reads voices-path.txt for the configured library instead.
 $launchScript = @"
 @echo off
 setlocal
 set "ROOT=%~dp0"
-set "PANDA_VOICES_ROOT=$voiceRoot"
 set "PANDA_PYTHON=%ROOT%python\python.exe"
 set "PANDA_MEANVC2_ROOT=%ROOT%MeanVC2"
 set "PYTHONPATH=%ROOT%share\python;%PYTHONPATH%"

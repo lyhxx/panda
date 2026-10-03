@@ -277,6 +277,15 @@ foreach ($package in @("panda_cli", "panda_infer", "panda_pack")) {
         -LiteralPath (Join-Path $engineRoot "src\$package") `
         -Destination (Join-Path $pythonShare $package)
 }
+# Every package's __init__ does `from panda_version import __version__`, and
+# this module sits at the src root next to the packages -- not inside them.
+# Without it the import only resolves through the development machine's
+# editable-install .pth, i.e. the package works on the packing machine and
+# fails on every other computer.
+Copy-Item `
+    -Force `
+    -LiteralPath (Join-Path $engineRoot "src\panda_version.py") `
+    -Destination (Join-Path $pythonShare "panda_version.py")
 
 Get-ChildItem -LiteralPath $pythonShare -Recurse -Directory -Filter "__pycache__" |
     Remove-Item -Recurse -Force

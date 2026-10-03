@@ -59,9 +59,16 @@ void configure_bundled_environment() {
         QFileInfo::exists(voices_path_file)) {
         QFile file(voices_path_file);
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            const auto configured_path = QString::fromUtf8(
+            auto configured_path = QString::fromUtf8(
                 file.readAll()
             ).trimmed();
+            // Windows PowerShell 5.1 writes UTF-8 with a BOM, and fromUtf8
+            // keeps it as U+FEFF: a "path" starting with that character is
+            // not absolute anymore, so mkpath would create a garbage folder
+            // relative to the working directory and the library looks empty.
+            if (configured_path.startsWith(QChar::ByteOrderMark)) {
+                configured_path.remove(0, 1);
+            }
             if (!configured_path.isEmpty()) {
                 qputenv("PANDA_VOICES_ROOT", configured_path.toUtf8());
             }
