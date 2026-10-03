@@ -13,6 +13,7 @@ This file tracks planned and bundled third-party software. Entries marked as
 | FCPE | planned integration | Verify upstream license before bundling | https://github.com/CNChTu/FCPE |
 | Vocos | planned model component | MIT | https://github.com/gemelo-ai/vocos |
 | nlohmann/json | bundled source dependency | MIT | https://github.com/nlohmann/json |
+| VB-CABLE | linked from the settings page, never bundled | Donationware (VB-Audio) | https://www.vb-cable.com |
 
 Before the first binary release:
 
@@ -26,4 +27,14 @@ Before the first binary release:
 
 DeepFilterNet's upstream license notice is included in
 `third_party/notices/deepfilternet-LICENSE` and is copied into packaged builds.
+
+VB-CABLE is linked to, never redistributed. VB-Audio's licensing page does
+allow bundling the plain VB-CABLE package with another application (free or
+commercial, including a silent install), but only while the donationware
+model still shows through: the end user must be able to identify VB-CABLE as
+VB-Audio's product and to reach a donation path, and the origin
+www.vb-cable.com must be named. The A+B / C+D bundles and VoiceMeeter
+Potato may not be bundled at all. Revisit only if that wording can be put on
+screen, and note that bundling also pins a SHA-256 that has to be refreshed
+every time VB-Audio ships a new pack.
 

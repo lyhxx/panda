@@ -246,18 +246,52 @@ Popup {
                             }
                         }
 
-                        Text {
-                            // No virtual endpoint exists on this machine, so
-                            // the picker has nothing to offer for other
-                            // applications. That one line is the whole
-                            // explanation: no box, no button to press.
-                            visible: !dialog.hasVirtualOutput
-                            text: qsTr("未检测到虚拟声卡，其它软件听不到；安装 VB-CABLE 后这里可选。")
-                            color: Theme.textTertiary
-                            font.pixelSize: Theme.fontSmall
-                            font.family: Theme.fontFamily
-                            wrapMode: Text.WordWrap
+                        RowLayout {
                             Layout.fillWidth: true
+                            spacing: Theme.space3
+                            // The machine has no virtual endpoint to offer, so
+                            // nothing on screen can reach other applications.
+                            // Saying that is not enough on its own: the fix is
+                            // one download away, so the download is here too,
+                            // together with the three steps that actually make
+                            // it work -- VB-CABLE's installer reports
+                            // "LOADDRV: The path does not exist" (-106) when it
+                            // is started without administrator rights or
+                            // straight out of the zip, and no device appears
+                            // until the reboot. The origin is spelled out
+                            // because VB-Audio asks that any pointer to
+                            // VB-CABLE names it.
+                            visible: !dialog.hasVirtualOutput
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+
+                                Text {
+                                    text: qsTr("未检测到虚拟声卡，其它软件听不到。")
+                                    color: Theme.textTertiary
+                                    font.pixelSize: Theme.fontSmall
+                                    font.family: Theme.fontFamily
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                                Text {
+                                    text: qsTr("下载后：解压 → 右键以管理员身份运行 → 重启 → 回来点刷新")
+                                    color: Theme.textSecondary
+                                    font.pixelSize: Theme.fontSmall
+                                    font.family: Theme.fontFamily
+                                    font.weight: Font.DemiBold
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                            }
+                            AppButton {
+                                iconName: "download"
+                                text: qsTr("去 www.vb-cable.com 下载")
+                                onClicked: Qt.openUrlExternally(
+                                    "https://www.vb-cable.com/"
+                                )
+                            }
                         }
 
                         TickMeter {

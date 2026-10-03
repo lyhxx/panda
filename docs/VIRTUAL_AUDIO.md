@@ -36,6 +36,12 @@ Panda v1 **不自带驱动**。原因是内核音频驱动需要管理员权限�
 
 ### 1. 安装虚拟声卡
 
+桌面端在找不到虚拟声卡时，「输出」下拉框下面会直接给出
+**去 www.vb-cable.com 下载** 按钮，点开就是官网，不用自己去搜。
+
+安装按三步走，顺序错了安装器会报 `LOADDRV: The path does not exist`
+（-106）：**解压 → 右键以管理员身份运行 → 重启**。
+
 安装 VB-CABLE 并重启音频服务（或重启电脑）。安装后会多出两个设备：
 
 ```text
@@ -95,6 +101,8 @@ panda route-check --python <安装了 sounddevice 的 python>
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
+| 安装器报 `LOADDRV: The path does not exist`（-106） | 没用管理员身份运行，或在压缩包预览里直接双击了 exe，驱动 `.sys` 不在旁边 | 解压到普通文件夹，右键 `VBCABLE_Setup_x64.exe` → **以管理员身份运行** |
+| 用管理员装完，设备列表里还是没有 | 官网要求 `Reboot after installation`，不重启端点不出现 | 重启电脑，再在输出下拉框旁点**刷新** |
 | `route-check` 报没有可用路由 | 只装了采集端，或者虚拟声卡没装 | 安装 VB-CABLE 后重跑 |
 | `route-check` 列出了 `CABLE Output` 但选不到它作为输出 | 那是采集端，不能写入 | 输出要选 `CABLE Input` |
 | 对方完全听不到 | 其它软件的麦克风没改成 `CABLE Output` | 在该软件里改麦克风 |

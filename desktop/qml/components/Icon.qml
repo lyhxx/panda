@@ -28,6 +28,7 @@ Item {
         case "trash": return "M3.5 6h17M9.5 6V4.3A1.3 1.3 0 0 1 10.8 3h2.4a1.3 1.3 0 0 1 1.3 1.3V6M18.5 6v13.2A1.8 1.8 0 0 1 16.7 21H7.3a1.8 1.8 0 0 1-1.8-1.8V6M10 10.5v6M14 10.5v6"
         case "plus": return "M12 5v14M5 12h14"
         case "refresh": return "M21 4v6h-6M3 20v-6h6M3.6 9a8.5 8.5 0 0 1 14.2-3.2L21 8M3 16l3.2 2.2A8.5 8.5 0 0 0 20.4 15"
+        case "download": return "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
         case "search": return "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35"
         case "chevron": return "M6 9l6 6 6-6"
         case "chevron-up": return "M6 15l6-6 6 6"
