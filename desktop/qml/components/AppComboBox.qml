@@ -128,11 +128,8 @@ ComboBox {
         padding: 5
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-        background: Rectangle {
+        background: GlassSheet {
             radius: Theme.radiusControl
-            color: Theme.dark ? "#2A2A31" : "#FFFFFF"
-            border.width: 1
-            border.color: Theme.cardBorder
         }
 
         contentItem: ListView {

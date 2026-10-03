@@ -26,11 +26,8 @@ Popup {
         color: Theme.scrim
     }
 
-    background: Rectangle {
+    background: GlassSheet {
         radius: Theme.radiusCard
-        color: Theme.dark ? "#26262C" : "#FFFFFF"
-        border.width: 1
-        border.color: Theme.cardBorder
     }
 
     contentItem: ColumnLayout {

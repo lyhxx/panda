@@ -50,7 +50,9 @@ QtObject {
     readonly property color hoverOverlay: dark ? "#1FFFFFFF" : "#0F000000"
     readonly property color pressedOverlay: dark ? "#2EFFFFFF" : "#17000000"
     readonly property color selectedOverlay: dark ? "#260A84FF" : "#1F007AFF"
-    readonly property color scrim: dark ? "#A6000000" : "#59000000"
+    // Kept light in the light theme: the pastel backdrop should read as a
+    // blurred window behind the sheet, not as grey mud under it.
+    readonly property color scrim: dark ? "#A6000000" : "#40000000"
     readonly property color tooltip: dark ? "#2C2C33" : "#2C2C33"
 
     // ---- Liquid glass ----------------------------------------------------
@@ -67,6 +69,19 @@ QtObject {
     readonly property color glassBorder: dark ? "#1FFFFFFF" : "#2E000000"
     readonly property color glassHighlight: dark ? "#33FFFFFF" : "#D9FFFFFF"
     readonly property color glassPill: dark ? "#1AFFFFFF" : "#A6FFFFFF"
+
+    // A floating sheet repeats the window's backdrop: the same light blobs
+    // (blobAccent/Purple/Teal) over the backdrop's palette, painted opaque.
+    // A popup cannot blur what sits under it, so letting the page show
+    // through only puts sharp ghosts of the avatars behind the settings text;
+    // the sheet borrows the backdrop's colours instead. The three stops run a
+    // shade deeper than the window's own gradient, so a short popup still
+    // reads as tinted glass once the lit top edge (`sheetSheen`) is laid over
+    // it rather than washing back out to white.
+    readonly property color sheetTop: dark ? "#0E1120" : "#E1EBFC"
+    readonly property color sheetMid: dark ? "#141731" : "#EFE9FC"
+    readonly property color sheetBottom: dark ? "#0A0C15" : "#DFF1F1"
+    readonly property color sheetSheen: dark ? "#26FFFFFF" : "#33FFFFFF"
 
     // ---- Radii -----------------------------------------------------------
     readonly property int radiusWindow: 12

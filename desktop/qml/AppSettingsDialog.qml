@@ -88,11 +88,8 @@ Popup {
 
     Overlay.modal: Rectangle { color: Theme.scrim }
 
-    background: Rectangle {
+    background: GlassSheet {
         radius: Theme.radiusCard
-        color: Theme.dark ? "#1E1E23" : "#FFFFFF"
-        border.width: 1
-        border.color: Theme.cardBorder
     }
 
     contentItem: ColumnLayout {
@@ -128,11 +125,17 @@ Popup {
                 }
             }
 
+            // Catches the light like a glass edge instead of ruling a hard
+            // table line across the sheet.
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: Theme.separator
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "transparent" }
+                    GradientStop { position: 0.5; color: Theme.glassBorder }
+                    GradientStop { position: 1.0; color: "transparent" }
+                }
             }
         }
 
