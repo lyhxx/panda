@@ -573,31 +573,29 @@ Popup {
                         subtitle: qsTr("下溢和丢帧只在真的发生时出现；日志用于排查无声问题。")
                     }
 
-                    Rectangle {
+                    RowLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 170
-                        radius: Theme.radiusControl
-                        color: Theme.dark ? "#66000000" : "#99FFFFFF"
-                        border.width: 1
-                        border.color: Theme.glassBorder
-                        clip: true
+                        spacing: Theme.space4
 
-                        AppScrollView {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            contentWidth: availableWidth
-                            TextEdit {
-                                readOnly: true
-                                text: realtimeController.logText.length > 0
-                                      ? realtimeController.logText
-                                      : qsTr("（暂无日志。开启变声后这里会显示 worker 输出。）")
-                                color: Theme.textSecondary
-                                font.pixelSize: Theme.fontCaption
-                                font.family: "Cascadia Mono, Consolas, monospace"
-                                wrapMode: TextEdit.WrapAnywhere
-                                selectByMouse: true
-                                width: parent.width
-                            }
+                        // The log is a file on disk rather than something
+                        // this window renders: showing it here duplicated a
+                        // viewer inside the settings and capped whatever a
+                        // reader could take away from it. One button hands the
+                        // file to the system's own viewer instead, which also
+                        // means the whole file can be copied or sent on.
+                        AppButton {
+                            iconName: "file"
+                            text: qsTr("打开日志文件")
+                            onClicked: realtimeController.openLogFile()
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: realtimeController.logFilePath
+                            color: Theme.textTertiary
+                            font.pixelSize: Theme.fontCaption
+                            font.family: "Cascadia Mono, Consolas, monospace"
+                            elide: Text.ElideMiddle
                         }
                     }
                 }

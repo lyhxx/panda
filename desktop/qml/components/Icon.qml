@@ -43,6 +43,7 @@ Item {
         case "route": return "M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"
         case "check": return "M20 6L9 17l-5-5"
         case "alert": return "M12 9.5v4M12 17.2h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+        case "file": return "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8"
         case "info": return "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16.5v-5M12 8h.01"
         case "power": return "M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"
         default: return ""

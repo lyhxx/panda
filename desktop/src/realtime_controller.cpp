@@ -4,6 +4,7 @@
 #include "worker_protocol.hpp"
 #include "windows_volume.hpp"
 
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -349,6 +350,20 @@ QString RealtimeController::status() const {
 
 QString RealtimeController::logText() const {
     return log_text_;
+}
+
+QString RealtimeController::logFilePath() const {
+    return QDir::tempPath() + QStringLiteral("/panda_events.log");
+}
+
+void RealtimeController::openLogFile() {
+    const QString path = logFilePath();
+    // A fresh install has written nothing yet; the folder still shows where
+    // the file will appear, and holds the metrics jsonl alongside it.
+    const QUrl target = QFile::exists(path)
+        ? QUrl::fromLocalFile(path)
+        : QUrl::fromLocalFile(QDir::tempPath());
+    QDesktopServices::openUrl(target);
 }
 
 QVariantList RealtimeController::inputDevices() const {
@@ -1100,18 +1115,10 @@ void RealtimeController::schedule_reconnect() {
 }
 
 void RealtimeController::append_log(const QString& value) {
-    if (value.contains(QStringLiteral("[audio]")) ||
-        value.contains(QStringLiteral("[panda.ready]")) ||
-        value.contains(QStringLiteral("[panda.voice]")) ||
-        value.contains(QStringLiteral("[panda.progress]")) ||
-        value.contains(QStringLiteral("error")) ||
-        value.contains(QStringLiteral("Exception"))) {
-        QFile log(QDir::tempPath() + QStringLiteral("/panda_events.log"));
-        if (log.open(QIODevice::Append | QIODevice::Text)) {
-            log.write(value.toUtf8());
-            log.close();
-        }
-    }
+    // The pane used to be the only reader of this stream, and the file was
+    // fed through a keyword filter that ran over whole chunks here. The panel
+    // now offers the file itself, so consume_log_line() writes exactly the
+    // lines the pane would have shown and this filter went with it.
     metric_line_buffer_ += value;
 
     bool log_changed = false;
@@ -1141,15 +1148,37 @@ void RealtimeController::append_log(const QString& value) {
     }
 }
 
+void RealtimeController::append_event_line(QString line) {
+    // Lines arrive from the worker CRLF-terminated and the split above only
+    // drops the LF. QIODevice::Text already turns the '\n' written here into
+    // CRLF, so the surviving CR would make this \r\r\n and every reader would
+    // render a blank line after each entry; drop it and let the mode add the
+    // one terminator the rest of the file uses.
+    if (line.endsWith(QLatin1Char('\r'))) {
+        line.chop(1);
+    }
+    QFile log(logFilePath());
+    if (log.open(QIODevice::Append | QIODevice::Text)) {
+        log.write((line + QLatin1Char('\n')).toUtf8());
+        log.close();
+    }
+}
+
 void RealtimeController::consume_log_line(
     const QString& line,
     bool& log_changed
 ) {
     if (panda::desktop::is_metrics_line(line)) {
-        // Metrics are surfaced as numbers; keep them out of the log pane.
+        // Metrics are surfaced as numbers and already land in their own
+        // jsonl file; in the event log they would only bury the rest.
         parse_metric_line(line);
         return;
     }
+
+    // Everything the pane used to display is what someone reading the file
+    // after a silent-output report needs, so it is written out as it arrives
+    // instead of being kept in memory behind a control nobody renders.
+    append_event_line(line);
 
     static const QString progress_prefix =
         QStringLiteral("[panda.progress]");
@@ -1179,12 +1208,7 @@ void RealtimeController::consume_log_line(
         // The stop drain report: how long the tail took and what was still
         // queued. Worth keeping in the event file when a listener reports a
         // cut-off word, but raw JSON the listener has no use for, so it stays
-        // out of the log pane.
-        QFile log(QDir::tempPath() + QStringLiteral("/panda_events.log"));
-        if (log.open(QIODevice::Append | QIODevice::Text)) {
-            log.write((line + QLatin1Char('\n')).toUtf8());
-            log.close();
-        }
+        // out of the log pane. Already appended above with every other line.
         return;
     }
 

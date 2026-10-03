@@ -19,6 +19,9 @@ class RealtimeController final : public QObject {
     Q_PROPERTY(int startupProgress READ startupProgress NOTIFY startupProgressChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString logText READ logText NOTIFY logTextChanged)
+    // Where the diagnostics file lives. The panel no longer renders the log,
+    // it offers this file instead, so the path is worth exposing.
+    Q_PROPERTY(QString logFilePath READ logFilePath CONSTANT)
     Q_PROPERTY(QVariantList inputDevices READ inputDevices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantList outputDevices READ outputDevices NOTIFY devicesChanged)
     Q_PROPERTY(int defaultInputDevice READ defaultInputDevice NOTIFY devicesChanged)
@@ -71,6 +74,7 @@ public:
     [[nodiscard]] int startupProgress() const;
     [[nodiscard]] QString status() const;
     [[nodiscard]] QString logText() const;
+    [[nodiscard]] QString logFilePath() const;
     [[nodiscard]] QVariantList inputDevices() const;
     [[nodiscard]] QVariantList outputDevices() const;
     [[nodiscard]] int defaultInputDevice() const;
@@ -164,6 +168,9 @@ public:
     // when the device cannot be mapped, so the UI can fall back gracefully.
     Q_INVOKABLE double deviceVolume(int deviceId, bool output) const;
     Q_INVOKABLE void setDeviceVolume(int deviceId, bool output, double scalar);
+    // Opens the diagnostics file in the system viewer, falling back to its
+    // folder when nothing has been written yet.
+    Q_INVOKABLE void openLogFile();
 
 signals:
     void runningChanged();
@@ -185,6 +192,7 @@ signals:
 private:
     void append_log(const QString& value);
     void consume_log_line(const QString& line, bool& log_changed);
+    void append_event_line(QString line);
     void flush_log_buffer();
     void trim_log();
     void parse_devices(const QByteArray& value);
