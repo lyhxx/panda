@@ -19,7 +19,15 @@ DeviceList parse_device_payload(const QByteArray& value) {
     }
 
     const auto root = document.object();
-    const auto devices = root.value(QStringLiteral("devices")).toArray();
+    const auto devices_value = root.value(QStringLiteral("devices"));
+    // A well-formed JSON object without a device array is a schema mismatch,
+    // not an empty machine: reporting it as success would clear the list and
+    // leave the pickers waiting for data that is never coming.
+    if (!devices_value.isArray()) {
+        result.error = QStringLiteral("设备列表缺少 devices 字段");
+        return result;
+    }
+    const auto devices = devices_value.toArray();
     const auto hostapis = root.value(QStringLiteral("hostapis")).toArray();
     const auto defaults = root.value(QStringLiteral("default")).toArray();
 

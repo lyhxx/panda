@@ -102,7 +102,9 @@ def copy_references(audio_paths: Iterable[Path], root: Path) -> list[dict[str, o
         record: dict[str, object] = {
             "path": target.relative_to(root).as_posix(),
             "sha256": sha256_file(target),
-            "source_name": audio.name,
+            # Deliberately no source filename: the manifest ships with the
+            # pack, and the original file name can carry personal context
+            # the recipient has no business seeing.
         }
         record.update(wav_metadata(target))
         records.append(record)

@@ -50,6 +50,11 @@ QProcessEnvironment python_process_environment() {
         kept.append(entry);
     }
     environment.insert(QStringLiteral("PATH"), kept.join(QLatin1Char(';')));
+    // These children talk to the app over pipes that are decoded as UTF-8.
+    // Without this Python picks the console code page (GBK on a Chinese
+    // Windows) for stdout/stderr, and every Chinese error message arrives
+    // as mojibake in the status line and the device-error banner.
+    environment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
     return environment;
 }
 

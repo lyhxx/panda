@@ -129,13 +129,19 @@ std::optional<double> endpoint_volume(const QString& deviceName, bool render) {
 
 bool set_endpoint_volume(const QString& deviceName, bool render, double scalar) {
     const float value = static_cast<float>(scalar < 0.0 ? 0.0 : (scalar > 1.0 ? 1.0 : scalar));
-    return with_endpoint_volume(
+    bool applied = false;
+    const bool matched = with_endpoint_volume(
         deviceName,
         render,
-        [value](IAudioEndpointVolume* volume) {
-            volume->SetMasterVolumeLevelScalar(value, nullptr);
+        [value, &applied](IAudioEndpointVolume* volume) {
+            applied = SUCCEEDED(
+                volume->SetMasterVolumeLevelScalar(value, nullptr)
+            );
         }
     );
+    // "endpoint found" is not "volume changed": a refused set must not be
+    // reported to the slider as success.
+    return matched && applied;
 }
 
 }  // namespace panda::desktop

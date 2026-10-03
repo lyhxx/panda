@@ -17,6 +17,7 @@ private slots:
     void splits_inputs_and_outputs();
     void marks_virtual_devices();
     void rejects_invalid_json();
+    void rejects_missing_devices_field();
     void reads_defaults();
 };
 
@@ -95,6 +96,21 @@ void DeviceListTest::marks_virtual_devices() {
 
 void DeviceListTest::rejects_invalid_json() {
     const auto parsed = parse_device_payload(QByteArrayLiteral("not json"));
+
+    QVERIFY(!parsed.ok);
+    QVERIFY(!parsed.error.isEmpty());
+    QVERIFY(parsed.inputs.isEmpty());
+    QVERIFY(parsed.outputs.isEmpty());
+    QCOMPARE(parsed.default_input, -1);
+    QCOMPARE(parsed.default_output, -1);
+}
+
+void DeviceListTest::rejects_missing_devices_field() {
+    // Well-formed JSON, wrong schema: without a devices array this is a
+    // mismatch to report, not an empty machine to display.
+    const auto parsed = parse_device_payload(
+        QByteArrayLiteral(R"({"default": [3, 7], "hostapis": []})")
+    );
 
     QVERIFY(!parsed.ok);
     QVERIFY(!parsed.error.isEmpty());

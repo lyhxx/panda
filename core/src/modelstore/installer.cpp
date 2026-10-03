@@ -142,7 +142,18 @@ Status run_tar(
         return Status::error(ErrorCode::install_failed, "failed to start tar.exe");
     }
 
-    WaitForSingleObject(process_info.hProcess, INFINITE);
+    // Generous for a 2 GiB extraction on a cold disk, but bounded: a wedged
+    // archiver must never hang the GUI event loop forever.
+    constexpr DWORD kTarTimeoutMs = 10 * 60 * 1000;
+    if (WaitForSingleObject(process_info.hProcess, kTarTimeoutMs) !=
+        WAIT_OBJECT_0) {
+        TerminateProcess(process_info.hProcess, 1);
+        WaitForSingleObject(process_info.hProcess, 5000);
+        CloseHandle(process_info.hThread);
+        CloseHandle(process_info.hProcess);
+        CloseHandle(output);
+        return Status::error(ErrorCode::io_error, "tar.exe timed out");
+    }
     DWORD exit_code = 1;
     GetExitCodeProcess(process_info.hProcess, &exit_code);
     CloseHandle(process_info.hThread);
