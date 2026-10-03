@@ -248,11 +248,24 @@ Popup {
 
                             AppComboBox {
                                 Layout.fillWidth: true
-                                model: [{ "id": -1, "label": qsTr("不输出") }].concat(
+                                // The list arrives from the device-scan subprocess a
+                                // second or two after launch. Until it does, this model
+                                // is only the placeholder row, so a restored choice
+                                // would render as "不输出" while state and audio are
+                                // actually fine -- a lie the user rightly reported.
+                                // Describe the wait instead, and until there is real
+                                // data to pick from, keep the control out of reach.
+                                model: [{
+                                    "id": -1,
+                                    "label": realtimeController.outputDevices.length > 0
+                                             ? qsTr("不输出")
+                                             : qsTr("正在检测设备…")
+                                }].concat(
                                     AppState.filteredDevices(realtimeController.outputDevices)
                                 )
                                 textRole: "label"
                                 valueRole: "id"
+                                enabled: realtimeController.outputDevices.length > 0
                                 desiredValue: AppState.selectedOutputDevice
                                 onActivated: AppState.selectedOutputDevice = currentValue
                             }
