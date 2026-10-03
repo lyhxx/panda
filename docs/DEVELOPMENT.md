@@ -1,601 +1,440 @@
 # Panda 开发文档
 
-## 1. 项目目标
+本文是 Panda 唯一的开发文档：环境搭建、架构、实现细节、测试、打包与发布都在这里。
+产品介绍见 [README](../README.md)，版本变更见 [CHANGELOG](../CHANGELOG.md)。
 
-Panda 的目标是构建一个开源、免费、可扩展的实时变声器。
+## 1. 项目概览
 
 ### 1.1 产品原则
 
-- 本地优先：核心变声不依赖账号和云端服务。
-- 模块解耦：界面、音频、推理和模型管理互不耦合。
-- 格式开放：音色包和运行配置可以检查、迁移和重新生成。
-- 多后端：同一套客户端协议支持 MeanVC2、RVC 和 DSP。
-- 可降级：GPU 不可用时可以回退到 CPU 或基础 DSP。
-- 可诊断：延迟、丢帧、推理耗时和设备状态可视化。
-- 可替换：公共模型、音色资源、训练工具和客户端独立发布。
+- 本地优先：变声不依赖账号和云端服务，音频不出本机。
+- 模块解耦：界面、音频、推理和模型管理互不耦合，推理跑在独立进程。
+- 格式开放：音色包是明文 ZIP，可检查、可迁移、可重新生成。
+- CPU 可用：CPU 实时是默认路径，GPU 只是可选加速。
+- 可降级：设备、模型、降噪都有明确的失败回退和用户提示。
+- 可诊断：延迟、丢帧、推理耗时、电平和设备状态可视化，`panda doctor` 一键自检。
+- 资源独立发布：公共模型、音色包、训练工具与客户端独立版本化。
 
-### 1.2 MVP 目标
+### 1.2 仓库结构
 
-- Windows 10/11
-- WASAPI 麦克风采集
-- 本地 MeanVC2 推理
-- 开放音色包扫描、安装、删除和切换
-- 扬声器监听
-- 虚拟麦克风输出
-- 基础延迟、CPU 和内存状态
-- 崩溃恢复
-
-第一版后端和技术范围：
-
-- Windows 实时变声
-- MeanVC2 零样本音色
-- 开放音色包导入、安装、校验和删除
-- 虚拟麦克风输出
-- CPU 可推理
-- GPU 可选加速
-
-后续阶段：
-
-- RVC 后端
-- DSP 效果链
-- 音色训练与导出
-- 多设备与多路由
-- Linux 和 macOS
-
-## 2. 总体架构
-
-```text
-┌──────────────────────────────────────────────┐
-│                  Qt 6 / QML                  │
-│  音色管理  设置  设备选择  状态  日志  训练入口  │
-└──────────────────────┬───────────────────────┘
-                       │ IPC
-┌──────────────────────▼───────────────────────┐
-│                Core Service                  │
-│  配置管理  音色包管理  引擎编排  设备管理  日志   │
-└───────────────┬──────────────────┬────────────┘
-                │                  │
-┌───────────────▼───────┐  ┌───────▼─────────────┐
-│     Audio Pipeline    │  │   Engine Adapters   │
-│ 采集 重采样 队列 重连  │  │ MeanVC2 / RVC / DSP │
-│ 降噪 输出 QoS 监测     │  └───────┬─────────────┘
-└───────────────┬───────┘          │
-                │                  │
-        ┌───────▼──────────────────▼───────┐
-        │        Inference Runtime          │
-        │ ONNX Runtime / LibTorch / CPU-GPU │
-        └───────────────┬──────────────────┘
-                        │
-        ┌───────────────▼──────────────────┐
-        │            Audio Output          │
-        │ 扬声器 / 普通线路 / 虚拟麦克风     │
-        └──────────────────────────────────┘
-```
-
-### 2.1 建议仓库结构
+2026-10 起 panda 与 panda-engine 合并为单仓库（原 panda-engine 已归档并挂指引），
+Python 引擎源码位于 `python/`：
 
 ```text
 panda/
-  CMakeLists.txt
-  README.md
-  LICENSE
-  apps/
-    desktop/                 Qt 客户端
-    core-service/            本地服务入口
-  src/
-    audio/                   音频设备、缓冲和重采样
-    config/                  配置模型和持久化
-    engine/                  后端接口和编排
-    engine/meanvc2/          MeanVC2 适配器
-    engine/rvc/              RVC 适配器
-    engine/dsp/              DSP 后端
-    modelstore/              音色包扫描、校验和安装
-    ipc/                     本地 IPC
-    logging/                 日志和错误码
-  tools/
-    panda_pack/             音色包导出工具
-  tests/
-    unit/
-    integration/
-    fixtures/
-  docs/
-    DEVELOPMENT.md
-    VOICE_PACK_FORMAT.md
-    MEANVC2_TRAINING.md
-  third_party/
-    notices/
+  CMakeLists.txt            顶层构建，版本号从 version.hpp 解析
+  CMakePresets.json         构建预设
+  README.md                 产品文档
+  CHANGELOG.md              更新日志
+  THIRD_PARTY_NOTICES.md    第三方声明
+  LICENSE / NOTICE
+  core/                     C++20 核心库
+    include/panda/          头文件（version.hpp = 全局版本唯一来源）
+    src/
+  cli/                      C++ 命令行入口（main.cpp）
+  desktop/                  Qt 6 / QML 桌面应用
+  python/                   Python 引擎（原 panda-engine/src）
+    pyproject.toml          setuptools 工程，dynamic version
+    src/
+      panda_cli/            统一命令行入口
+      panda_infer/          DSP、抖动缓冲、实时会话、降噪、ONNX 导出、试听…
+      panda_pack/           开放音色包导出
+      panda_version.py      Python 侧版本唯一来源
+  tests/                    测试
+    core/                   C++ 测试源码（由 CTest 运行）
+    test_*.py               Python 测试（unittest discover 运行）
+  scripts/                  打包、安装、开发启动、测试语音生成等脚本
+  docs/                     本文档与截图
+  third_party/              第三方头文件与许可
+  build/                    构建产物（不入库）
+  dist/                     打包产物（不入库）
 ```
 
 目录调整时必须同步更新本文档和构建脚本。
 
-## 3. 模块划分
+### 1.3 技术栈与代码规范
 
-### 3.1 Desktop UI
+| 领域 | 选型 |
+| --- | --- |
+| 桌面 | Qt 6.8.3（QML/Quick）、C++20、CMake |
+| 引擎 | Python 3.11、PyTorch 2.5.1（CPU）、sounddevice/PortAudio |
+| 变声 | MeanVC2（ASR / DiT CFM / Vocos / FCPE + 说话人嵌入） |
+| 降噪 | DeepFilterNet3（可选，三档） |
+| 哈希 | SHA-256 |
+| 配置 | C++ 侧 QSettings（注册表）+ JSON；音色包内 YAML/JSON |
 
-职责：
+规范：
 
-- 音色画廊
-- 搜索、筛选和排序
-- 音色包导入、更新和删除
-- 输入输出设备选择
-- 变声参数调节
-- 延迟和性能显示
-- 错误提示和日志查看
+- 字符编码 UTF-8，换行 LF；二进制模型优先 safetensors / ONNX。
+- 音色包内只允许相对路径（`/` 分隔），禁止绝对路径、`..`、符号链接。
+- 日志为结构化行，不记录原始音频、音色包内容、完整绝对路径。
+- 提交规范：`feat:` `fix:` `docs:` `test:` `refactor:` `build:` `chore:`。
 
-技术：
+## 2. 开发环境
 
-- Qt 6
-- QML
-- C++20
-
-UI 不直接加载模型，不直接操作音频设备。
-
-已实现的部分：
-
-- 音色包列表（`PackListModel`），支持安装、覆盖安装和删除
-- 核心错误码映射为界面文案，覆盖「已安装」「schema 不匹配」「校验失败」等情况
-- 输入输出设备枚举和选择、启停实时变声
-- 选择非虚拟输出设备时提示「其它软件听不到」，并引导安装虚拟声卡
-- 延迟、音频块、RTF、缓冲深度和过载状态显示
-- 模型（40ms/120ms）和算力（cpu/cuda）选择
-- 运行日志面板；指标行单独走数值显示，不混进日志
-- 按名称或 ID 筛选音色包（筛选状态在刷新后保持）
-- 预滚块数和缓冲上限的可视化调节，取值由控制器钳制
-- 监听输出选择：把变声结果同时播给本机，输出走虚拟声卡时也能听见自己
-- 记住上次的音色包、设备、模型和延迟设置（QSettings，Windows 下在注册表）
-- 静音门开关与阈值（默认关闭，-45 dB 起步），随会话一起记住
-- 降噪开关（默认关闭）；界面上写明它增加约 160 ms 延迟，且不去除别人的说话声
-- 下溢/丢帧诊断行：只在真的发生时出现，健康会话不显示一串零
-
-尚未实现：音高变换（需要真正的流式变调算法）。
-
-### 3.2 Core Service
-
-职责：
-
-- 读取和保存应用配置
-- 管理音色包状态
-- 选择后端并加载预设
-- 编排音频和推理线程
-- 处理引擎崩溃和自动重连
-- 聚合日志和指标
-
-### 3.3 Audio Pipeline
-
-职责：
-
-- WASAPI 采集和播放
-- 设备热插拔
-- 采样率转换
-- 分块
-- 环形缓冲
-- 时钟漂移处理
-- 静音门
-- 输出软限幅
-
-约束：
-
-- 音频回调中不能进行文件 I/O
-- 音频回调中不能分配大块内存
-- 模型推理不能阻塞音频回调
-- 必须能够在设备变化后自动恢复
-
-抖动缓冲要求：
-
-- 推理放在工作线程，音频回调只做“读缓冲 + 输出”。
-- 播放前先预滚 1–2 个块，用来吸收偶发的慢块。
-- 缓冲深度必须有上限；超限时丢最旧的数据，避免延迟无界增长。
-- 必须统计下溢（underrun）、丢帧和当前缓冲深度，供界面显示。
-
-还要处理一种不明显的延迟来源：转换器开头几块返回空，随后一次吐出多块来
-追赶，这一波会比播放消耗得快；之后生产和消费恢复平衡，**盈余就永远留在
-缓冲里变成固定延迟**（实测 580 ms 对 320 ms 预滚）。`JitterBuffer.trim_to`
-在缓冲超过预滚一个块以上时丢掉最旧的数据，把深度拉回预滚目标。修剪发生在
-缓冲里还装着预滚静音的时候，丢掉的也是静音而不是语音。
-
-`panda_infer.jitter_buffer.JitterBuffer` 已经实现这层的缓冲逻辑，
-包含预滚、下溢计数、超限丢帧和深度统计。
-
-静音门和输出软限幅实现在 `panda_infer.dsp`。**静音门不是降噪器**，
-它只在环境噪声低于阈值时有用；实测数据见 10.2 节。
-
-- `NoiseGate`：按块判断电平，低于阈值就淡出。判断放在块级别是因为转换
-  本身以块为单位；逐采样判断需要前视，否则会削掉字头。增益在块内做斜坡
-  而不是跳变，开启比关闭快，避免切掉尾音。
-- `SoftLimiter`：低于拐点的信号原样通过（普通音量下完全透明），超过后
-  沿 tanh 平滑压向上限，保证输出不可能削顶，同时避免硬限幅的折角。
-- `OutputGain`：在软限幅之前提供固定的 -24 到 +12 dB 输出增益；桌面端
-  和命令行共用同一参数，默认 0 dB 时完全不改变音频。
-- 同一增益组件用于麦克风输入音量，输入增益在降噪和静音门之前生效。
-- 监听路径使用独立增益，调整耳机音量不会改变送给其它软件的主输出。
-- 桌面端输出下拉框给虚拟设备加"（虚拟声卡）"标记，并保证设备过滤不会把它
-  滤掉；机器上没有虚拟声卡时只显示一行提示。`panda route-check` 的两端配对
-  报告只留在终端里，界面不再调用它。
-- `panda preview`：按音色包参考音频试听最多 8 秒，使用所选输出设备的
-  原生采样率播放。
-- 实时指标同时携带 `input_rms`、`input_peak`、`output_rms`、`output_peak`
-  和削顶标志，桌面端设置页显示输入/输出电平条。
-- `panda mic-test`：录制指定麦克风 3 秒并回放到指定输出，用于区分
-  麦克风采集、系统权限和输出路由问题。
-
-两者都是可选的：静音门默认关闭（`--noise-gate-db`，推荐 -45），软限幅
-默认开启在上限 0.891（约 -1 dBFS，对实测峰值 0.15 完全透明）。
-
-采样率转换由 `panda_infer.dsp.StreamResampler` 负责。原因很实际：
-WASAPI 共享模式只接受设备自己的混音格式（通常 48 kHz），固定用 16 kHz
-开流会直接报 `Invalid sample rate`；MME/DirectSound 会替我们重采样，所以
-只在 WASAPI 上暴露。现在按设备原生采样率开流，软件转换到引擎的 16 kHz。
-
-转换是**有状态**的：逐块转换而不保留滤波器历史，每个块边界都会留下不连续，
-听起来是周期性的咔哒声。`StreamResampler` 在调用之间保留 FIR 状态，因此
-分块处理的结果与一次性连续处理逐样本一致（有测试保证）。整数倍率
-（48 kHz 对 16 kHz）走多相路径，非整数倍率退回线性插值。
-
-代价是线性相位滤波器带来的群延迟，约每个方向半个滤波器（默认 63 抽头下
-48 kHz 约 0.6 ms），远小于块长。
-
-预滚产生的静音是刻意引入的启动延迟，不算下溢，因此单独统计为
-`prefill_frames` / `prefill_reads`；只有进入稳态之后的补零才计入
-`underrun_frames` / `starved_reads`。
-
-### 3.4 Engine Adapters
-
-统一接口至少包含：
+### 2.1 打包机 / 开发机清单（已验证）
 
 ```text
-prepare(config)
-start()
-stop()
-flush()
-process(input_buffer, output_buffer)
-set_device(device_info)
-get_metrics()
+系统：Windows 10 Home China，Build 26300，无管理员权限
+CPU：Intel Core Ultra 5 125H（14C/18T）  内存：31.6 GB  核显：Intel Arc，无独显
 ```
 
-第一版后端：
+| 组件 | 位置 | 版本 |
+| --- | --- | --- |
+| VS Build Tools | `C:\BuildTools` | MSVC 14.44.35207，WinSDK 10.0.26100.0 |
+| CMake / Ninja / MSBuild | `C:\BuildTools\...` | 随 Build Tools 安装 |
+| Qt | `.tools\Qt\6.8.3\msvc2022_64` | 6.8.3（Quick/Controls2/Multimedia/windeployqt） |
+| Miniforge | `.tools\miniforge3` | base 环境含 conda-pack 0.9.2 |
+| Python 环境 | `.tools\miniforge3\envs\meanvc2-cpu` | Python 3.11.16 |
+| MeanVC2 | `deps\MeanVC2` | 上游 commit 13acf84 |
+
+`meanvc2-cpu` 环境关键包版本（完整清单见根目录 `environment.yml`）：
 
 ```text
-MeanVC2
+torch 2.5.1+cpu        torchaudio 2.5.1+cpu    numpy 1.26.4
+onnxruntime 1.30.0     onnx 1.23.1（导出）      onnxscript 0.7.2
+deepfilternet 0.5.6    s3prl 0.4.18            sounddevice 0.5.6
+soundfile / scipy / pillow（音色包导出）         einops / x-transformers / torchdiffeq
 ```
 
-后续后端：
+注意：`deepfilternet` 要求 `numpy<2`，会把 numpy 压回 1.x（与 `ml-dtypes`
+的版本告警可忽略，全套测试在 numpy 1.26.4 下通过）。打包脚本同样拒绝
+numpy 2.x 的便携环境。
+
+### 2.2 新机器从零搭建
+
+1. **克隆仓库**（panda 单仓库，无需第二个仓库）：
+
+   ```powershell
+   git clone https://github.com/lyhxx/panda.git
+   cd panda
+   ```
+
+2. **C++ 工具链**：安装 Visual Studio Build Tools 2022（C++ 桌面开发 + CMake 工作负载），
+   默认装到 `C:\BuildTools` 也可装到任意路径（配置时用 CMake 路径即可）。
+
+3. **Qt**：用 Qt 安装器装 Qt 6.8.3 `msvc2022_64` 组件（Quick、Quick Controls 2、
+   Multimedia、Shader Tools），安装到仓库旁的 `.tools\Qt\6.8.3\msvc2022_64`
+   （`scripts\run_dev_desktop.ps1` 默认按此路径探测，可用 `-QtRoot` 覆盖）。
+
+4. **Python 环境**：安装 Miniforge 到 `.tools\miniforge3`，然后：
+
+   ```powershell
+   conda env create -f environment.yml     # 建环境（见 2.5）
+   conda activate meanvc2-cpu
+   ```
+
+5. **安装引擎包（editable）**：
+
+   ```powershell
+   python -m pip install -e .\python --no-deps --no-build-isolation
+   panda --version     # 应输出 1.0.0
+   ```
+
+6. **MeanVC2 与模型资产**：
+
+   ```powershell
+   git clone https://github.com/ASLP-lab/MeanVC2.git ..\deps\MeanVC2
+   cd ..\deps\MeanVC2
+   git checkout 13acf84
+   python initialization.py --task all      # 自动下载大部分模型
+   ```
+
+   自动下载覆盖不了的两个点（见 2.3）：`wavlm_large.pt` 上游链接 404，改用
+   HuggingFace 镜像；`wavlm_large_finetune.pth` 必须从 Google Drive 手动下载
+   （上游标注不可自动获取）。
+
+7. **DeepFilterNet 检查点**（可选降噪用）：首次使用降噪时会自动缓存到
+   `%LOCALAPPDATA%\DeepFilterNet\DeepFilterNet\Cache\DeepFilterNet3`，
+   需要其中的 `config.ini` 与 `checkpoints\model_120.ckpt.best`。
+
+8. **验证**（见 2.5 命令）：CTest 全绿、Python 测试全绿、`panda doctor` 零错误。
+
+### 2.3 模型资产与下载源
+
+`deps\MeanVC2` 中必须存在（打包白名单照此复制）：
 
 ```text
-RVC
-MeanVC1
-DSP
+preprocess/ckpts/fastu2pp_80ms.pt
+preprocess/ckpts/fastu2pp_160ms.pt
+preprocess/ckpts/wavlm_large.pt
+preprocess/ckpts/wavlm_large_cfg.pt
+preprocess/ckpts/wavlm_large_finetune.pth     ← Google Drive 手动（约 1.24 GB）
+ckpts/pretrained_models/meanvc2_40ms_40ms.safetensors
+ckpts/pretrained_models/meanvc2_120ms_40ms.safetensors
+ckpts/vocos/vocos.pt
 ```
 
-不同后端必须使用相同的控制接口，UI 不感知模型内部结构。
-
-### 3.5 Model Store
-
-职责：
-
-- 扫描开放音色包
-- 校验 Manifest 和 SHA-256
-- 解压到临时目录
-- 原子安装
-- 防止路径穿越
-- 版本比较
-- 删除音色包
-- 记录本地状态
-
-安装流程：
+`wavlm_large.pt` 的上游 `initialization.py` GitHub 直链已 404，等价文件：
 
 ```text
-读取 ZIP
-  -> 解压到临时目录
-  -> 读取 manifest.json
-  -> 检查 schema_version
-  -> 检查文件列表
-  -> 校验 SHA-256
-  -> 移动到 models/voices/<id>
-  -> 原子更新索引
+https://huggingface.co/s3prl/converted_ckpts/resolve/main/wavlm_large.pt
 ```
 
-### 3.6 Inference Runtime
+### 2.4 环境迁移（换机 / 换盘）
 
-第一阶段：
+不重装环境的两条路：
 
-- ONNX Runtime
-- CPU 推理
-- 可选 DirectML 或其他 GPU 后端
+1. **发布资产即迁移包**：`Panda-runtime.zip` 就是 conda-pack 打出的完整环境，
+   解压到新机器任意路径即可用（python 目录自包含，含 VC++ 运行库）。
+   模型同理由 `Panda-Models.zip` 提供。
+2. **conda 原生流程**（要重建可编辑安装的开发环境时）：
 
-后续：
+   ```powershell
+   .tools\miniforge3\Scripts\conda.exe run -n base `
+     conda pack -n meanvc2-cpu --format zip --ignore-editable-packages
+   # 解压到新机后执行
+   python\Scripts\conda-unpack.exe
+   ```
 
-- CUDA
-- ROCm
-- Intel XPU
-- LibTorch
+   打包脚本对运行时解压加重试（终端防护在 5 万文件突发写入时会偶发拒写），
+   conda-unpack 在打包机跑过；1.0.0 已按 12.5-4 完成换路径验收（全新路径、
+   干净环境下 doctor / 模拟变声 / GUI 启动全绿），残留路径风险已实测排除。
 
-后端选择由运行时探测，不由用户手动填写框架路径。
-
-ONNX 导出的现状（声码器和 ASR 已验证，DiT 不可行）：
+### 2.5 环境验证命令
 
 ```powershell
-python -m panda_infer.onnx_export `
-  --meanvc2-root <MeanVC2 仓库> `
-  --stage vocoder `
-  --output dist\vocoder.onnx
+# C++：配置、构建、测试（5 个 CTest 目标）
+cmake -S . -B build\windows-msvc-desktop -G "Visual Studio 17 2022" -A x64 `
+  -DCMAKE_PREFIX_PATH="<Qt>\6.8.3\msvc2022_64" -DPANDA_BUILD_DESKTOP=ON
+cmake --build build\windows-msvc-desktop --config Release
+ctest --test-dir build\windows-msvc-desktop -C Release
 
-python -m panda_infer.onnx_export `
-  --meanvc2-root <MeanVC2 仓库> `
-  --stage asr --model 40ms `
-  --output dist\asr-40ms.onnx
+# Python：全部单元测试（176 个）
+python -m unittest discover -s tests -v
+
+# 命令与诊断
+panda --version
+panda doctor --meanvc2-root ..\deps\MeanVC2
 ```
 
-导出比想象中麻烦，三处都是实测踩出来的：TorchScript 入口是 `decode` 而不是
-`forward`，需要包一层脚本化模块；旧导出器翻译不了 iSTFT 里的 `aten::complex`
-（opset 17/18/20 全部失败），必须用 dynamo 导出器；dynamo 产出的 `ScatterND`
-索引是 int32，ONNX Runtime 拒绝加载，要转成 int64——而且 Cast 必须紧贴在
-消费者之前插入，放到图开头会破坏拓扑序，ONNX Runtime 会先吃掉 25 GB 内存再
-放弃。
+## 3. 构建、测试与运行
 
-ASR 则需要**相反**的策略：dynamo 会在它的符号形状处理上失败（`Eq(u0, -1)`），
-而旧导出器一次通过、不需要任何图修补。所以两个阶段各自指定导出器，不是
-"统一用某一种"。
+### 3.1 开发启动桌面端
 
-ASR 的导出还需要注意 offset 不能小于缓存长度——模型会按 offset 切注意力缓存，
-offset 小于 cache_size 会切出空张量，报出很难懂的维度错误。
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_dev_desktop.ps1
+```
 
-导出命令会自己与 PyTorch 对比数值，相对偏差超过 1e-3 直接报错，不会把
-"导出成功但算错"当成成功。
+脚本自动设置运行环境（也可手动配）：
 
-DiT 目前**导不出来**，两条路都试过：
+| 环境变量 | 含义 | 开发机取值 |
+| --- | --- | --- |
+| `PANDA_PYTHON` | 引擎解释器 | `.tools\miniforge3\envs\meanvc2-cpu\python.exe` |
+| `PANDA_MEANVC2_ROOT` | MeanVC2 仓库 | `..\deps\MeanVC2` |
+| `PANDA_VOICES_ROOT` | 音色包目录 | `dist\Panda\voices` |
+| `PANDA_DEEPFILTER_ROOT` | 降噪检查点 | `%LOCALAPPDATA%\DeepFilterNet\...\DeepFilterNet3` |
+| `PYTHONPATH` | 引擎源码 | `<repo>\python\src`（editable 安装后可省） |
+| `PATH` | Qt DLL | `<Qt>\bin` |
 
-- `torch.jit.script` 解析不了这个模块。它先卡在未标注的默认参数
-  （`def forward(self, x, scale=1000)` 被推断成 Tensor），补上标注后又卡在
-  jaxtyping 注解（`timestep: float["b"]`），TorchScript 不认识这种写法。
-- `torch.jit.trace` 走得远一些（稳态前向能跑通，返回 4 层共 8 个缓存张量），
-  但撞上 KV 缓存里的数据相关分支
-  （`if new_kv_cache[0].shape[2] > max_cache_frames`）。PyTorch 明确警告
-  这个 Python 布尔会被当成常量烧进图里，trace 不会泛化，随后就报缓存长度
-  不匹配。
+发布包里这些由 `launch.cmd` 自动设置（见 12.3），用户零配置。
 
-结论：**当前工具链下做不出纯 ONNX/C++ 运行时**，除非把 DiT 的流式推理路径
-重新实现成可 trace 的形式。Python 引擎已经实测 RTF 0.757、零下溢，因此暂时
-保留它作为后端；ASR 和声码器的导出作为已验证的基础保留，等 DiT 那条路
-真的要走时再用。
+### 3.2 版本号单点管理
 
-### 3.7 IPC 与接口契约
+全仓库一个版本号，两个语言生态各有一个唯一来源，互相不直接依赖：
 
-客户端和 Core Service 使用版本化 IPC。第一版可以使用 Named Pipe、本地 WebSocket 或 JSON-RPC。
+| 侧 | 唯一来源 | 消费方 |
+| --- | --- | --- |
+| C++ | `core\include\panda\version.hpp` 的 `Version{1,0,0}` | `version_string()`；根 CMakeLists 正则解析出 `project(VERSION)`；`scripts\package_windows.ps1` 解析出 manifest 与包名 |
+| Python | `python\src\panda_version.py` 的 `__version__` | `pyproject.toml` dynamic version；`panda --version`；三个包（panda_cli/panda_infer/panda_pack）re-export |
 
-#### 实时指标行
+`tests\test_version_consistency.py` 解析 version.hpp 与 `panda_version.__version__`
+比对，任何一侧单独改版本都会让测试失败。
 
-在 IPC 落地之前，桌面端通过解析 worker 的标准输出获取运行指标。
-`panda_infer.realtime_worker` 每转换完一个新块就输出一行：
+**发版时两处必须改成同一个值**，改完跑一次 Python 测试即可验证。
+
+### 3.3 测试体系
+
+| 套件 | 命令 | 规模 |
+| --- | --- | --- |
+| C++（core/desktop/协议/会话/设备） | `ctest --test-dir build\windows-msvc-desktop -C Release` | 5 个目标 |
+| Python（引擎 + 音色包 + 安装器 + 版本一致性） | `python -m unittest discover -s tests -v` | 176 个 |
+
+工程经验（都是踩过的坑）：
+
+- C++ 套件曾出现**退出码 0 但没跑完**的假通过：CTest 现在要求
+  `PANDA_CORE_TESTS_COMPLETE` 标记，截断的运行会失败而不是假装成功。
+- 本机删除 `.tmp` 下新建目录会卡 ~31 秒，C++ 测试用唯一路径 fixture 且不回收
+  （`.tmp` 可手工清理，CTest 有 120s 超时）。
+- Qt Test 目标必须建成控制台子系统，否则 GUI 子系统下**一行输出都没有**。
+- 本机 `PSModulePath` 被 PowerShell 7 目录污染时，Windows PowerShell 加载不了
+  Security 模块，签名测试要显式指定模块目录。
+- 全量 Python 套件偶发一次未记录名称的失败（约 15 次里 1 次），单模块各跑
+  10–15 次全过，疑似并发竞争；再现时用 `-v` 抓具体用例。
+
+测试策略：单元（manifest、路径、哈希、配置、DSP、缓冲）、集成（安装/删除/
+升级、安装器脚本）、音频回归（真实语音 + `panda voice-check` 客观相似度）、
+实时（延迟、下溢、热插拔）、故障（损坏 ZIP、篡改包、越界路径）。
+
+### 3.4 真实语音回归基准
+
+**测试素材必须是真实语音。** 早期 `smoke.wav` 是 220 Hz 正弦波，所有"变声"
+测试只证明管线通、从没证明换了说话人。现在用 Windows 自带 TTS 生成语音：
+
+```powershell
+.\scripts\make_test_speech.ps1 -VoiceName "Microsoft Zira Desktop" `
+  -Text "..." -Output dist\speech-zira.wav
+
+panda voice-check --meanvc2-root ..\deps\MeanVC2 `
+  --source-wav dist\speech-zira.wav --target-wav dist\speech-huihui.wav
+```
+
+判定依据是说话人嵌入余弦相似度（转换后应更接近目标，且远离源），自带
+"源→自身"对照保证度量可信。开发机实测：
 
 ```text
-[panda.metrics] {"chunk":24,"processing_ms":120.276,"chunk_ms":160.0,"buffer_ms":640.0,"overrun":false,"mean_ms":116.113,"max_ms":121.902,"starved_reads":0,"underrun_frames":0,"dropped_frames":50240,"input_dropped":0}
+对照（源→自身）    转换后 vs 源   +0.7323
+源 vs 目标         +0.2831
+转换后 vs 目标     +0.7010   ← 0.28 → 0.70
+转换后 vs 源       +0.2968
 ```
 
-约定：
-
-- 前缀固定为 `[panda.metrics] `，后面是单行 JSON，便于从普通日志里过滤。
-- `processing_ms` 是最近一块的耗时，用于界面上的实时显示；`mean_ms`/`max_ms` 提供整体上下文。
-- `overrun` 由 `processing_ms > chunk_ms` 判定。
-- `buffer_ms` 是当前抖动缓冲深度；`underrun_frames` 和 `dropped_frames` 分别是下溢帧数和超限丢弃帧数。
-- C++ 侧由 `panda::audio::parse_realtime_stats` 解析，同时兼容 MeanVC2 官方
-  `run_rt.py` 的旧控制台格式，便于在未改造的上游 runtime 上继续使用桌面端。
-
-控制消息至少包含：
-
-```json
-{
-  "id": "request-id",
-  "method": "engine.load",
-  "params": {
-    "pack_id": "manbo"
-  }
-}
-```
-
-响应：
-
-```json
-{
-  "id": "request-id",
-  "ok": true,
-  "result": {
-    "state": "ready"
-  }
-}
-```
-
-错误：
-
-```json
-{
-  "id": "request-id",
-  "ok": false,
-  "error": {
-    "code": "PACK_INVALID",
-    "message": "manifest.json is missing",
-    "retryable": false
-  }
-}
-```
-
-首批方法：
+## 4. 总体架构
 
 ```text
-app.get_status
-device.list
-pack.list
-pack.install
-pack.remove
-engine.load
-engine.start
-engine.stop
-engine.set_devices
-engine.get_metrics
+┌────────────────────────────────────────────────────┐
+│                Qt 6 / QML 桌面端                     │
+│   音色库  设备/音量/降噪设置  主题  延迟/电平  日志面板   │
+└───────────────┬────────────────────────────────────┘
+                │ 进程内（C++ 控制器 + core 库）
+┌───────────────▼────────────────────────────────────┐
+│  panda_desktop 进程                                 │
+│  worker_protocol：拼命令行、解析指标、崩溃重启决策        │
+│  PackListModel / SessionStore / 设备解析（均带测试）    │
+└───────────────┬────────────────────────────────────┘
+                │ 子进程：python -m panda_cli realtime …
+                │   stdout ← [panda.metrics] [panda.level] [panda.ready]
+                │   stdin  ← 实时设置 JSON（不重载模型）
+┌───────────────▼────────────────────────────────────┐
+│  Python 引擎进程（panda_infer）                       │
+│  音频回调(sounddevice) → 有界输入队列 → 工作线程          │
+│    → 降噪 → 噪声门 → MeanVC2 推理 → 抖动缓冲            │
+│    → 软限幅 → 输出/监听                               │
+└────────────────────────────────────────────────────┘
 ```
 
-接口必须遵守：
+### 4.1 线程与进程规则
 
-- 请求 ID 可在日志中追踪。
-- 不把绝对路径返回给 UI。
-- 错误返回稳定错误码。
-- 大文件传输不经过 IPC。
-- 协议版本不兼容时拒绝启动引擎。
+- 推理在 Python **工作线程**，音频回调只做"拷入 + 读缓冲 + 拷出"，不推理、
+  不做文件 I/O、不分配大块内存、不等锁。
+- 输入队列有界，满则丢最旧（延迟有界优先于完整）。
+- 桌面端与引擎**进程隔离**：引擎崩溃不拖垮界面；异常退出自动重启，最多 3 次
+  （1/2/3 秒退避），稳定运行 10 秒后重置计数；主动停止与干净退出不重启
+  （决策在 `should_restart_realtime`，有 C++ 测试）。
+- 设置（音量/门限/设备/降噪/延迟档）经 stdin JSON 下发，实时生效且**不重载模型**。
 
-### 3.8 线程模型
-
-第一版使用五个职责区：
+### 4.2 stdout 协议
 
 ```text
-UI 线程
-  只处理界面事件，不执行模型和文件操作
-
-控制线程
-  处理 IPC、状态机和生命周期
-
-音频实时线程
-  WASAPI 回调、环形缓冲和输出
-
-推理线程
-  模型前向、后处理和 QoS 统计
-
-后台 I/O 线程
-  音色包安装、校验、日志和下载
+[panda.metrics] {"chunk":24,"processing_ms":120.276,"chunk_ms":160.0,
+  "buffer_ms":640.0,"overrun":false,"mean_ms":116.113,"max_ms":121.902,
+  "starved_reads":0,"underrun_frames":0,"dropped_frames":50240,
+  "trimmed_frames":0,"input_dropped":0,
+  "input_rms":...,"input_peak":...,"output_rms":...,"output_peak":...,
+  "clipping":false}
+[panda.level]  ...   电平刷新
+[panda.ready]  ...   首块就绪
 ```
 
-规则：
+- 前缀固定，后随单行 JSON；`processing_ms > chunk_ms` 即 overrun。
+- C++ 侧 `panda::audio::parse_realtime_stats` 解析，同时兼容 MeanVC2 上游
+  `run_rt.py` 的旧控制台格式；指标前缀常量在 core 头文件里，生产/消费共用。
+- 指标行走数值显示，不混进日志面板（否则每秒刷两屏）。
 
-- 音频实时线程不能等待锁。
-- 音频实时线程不能进行磁盘和网络 I/O。
-- 推理线程通过无锁队列接收音频块。
-- 控制线程负责资源创建和销毁。
-- 所有回调都必须有超时和取消路径。
+### 4.3 配置与日志
 
-Python 原型已经按这个模型落地：
+- 用户配置：Windows 注册表（QSettings），`SessionStore` 双向清洗——未知模型/
+  后端回退默认、延迟走 `clamp_latency`、负设备 id 视为未选、音色包不存在则清空。
+- 设备持久化存 `hostApi|设备名` 稳定键，重启后对新设备列表重新解析，
+  Windows 设备顺序变化不再错选。
+- 音色与安装状态：`voices\<id>\manifest.json` 明文 + `package-manifest.json`
+  （打包完整性）。日志落盘在 `AppData`，桌面端「打开日志文件」按钮直达，
+  日志面板跟随文件尾部。
 
-```text
-音频回调 (sounddevice)
-  -> ConversionSession.submit_input()   只做拷贝入队，不阻塞、不推理
-  -> 输入队列 (有界，满则丢最旧)
-  -> 工作线程 ConversionSession._worker()
-       -> VCRunner.process_chunk()
-       -> JitterBuffer.push()
-  -> ConversionSession.read_output_into()  音频回调只做读缓冲 + 输出
-```
+## 5. 音频管线
 
-`ConversionSession` 还负责统计平均/最大推理耗时、缓冲深度、下溢、丢帧和
-推理异常，供 UI 显示和 `doctor` 诊断使用。
+### 5.1 分块与抖动缓冲
 
-### 3.9 引擎状态机
+- 引擎按 **160 ms 块**处理（MeanVC2 分块决定，与实现无关）。
+- `panda_infer.jitter_buffer.JitterBuffer`：预滚、下溢计数、超限丢最旧、深度统计。
+- **启动盈余问题**（实测发现）：转换器开头几块返回空，随后一次吐多块追赶，
+  这波快于播放消耗，盈余**永远留在缓冲里**变成固定延迟（580 ms 对 320 ms
+  预滚）。`JitterBuffer.trim_to` 在深度超过「预滚 + 修剪余量」时回收，
+  修剪发生在缓冲还装着预滚静音时，丢的是静音不是语音。
+- 稳态深度由**修剪阈值**决定而不是预滚目标。余量 1 块时缓冲恰好压在阈值上，
+  一次推理抖动就触发修剪，表现为**说话漏字**；默认余量 4 块，实测零修剪：
 
-```text
-Empty
-  -> Loading
-  -> Ready
-  -> Starting
-  -> Running
-  -> Stopping
-  -> Ready
-  -> Unloading
-  -> Empty
-```
+  | 余量 | 被修剪的已转换音频 | 输出下溢 | 缓冲峰值 |
+  | --- | --- | --- | --- |
+  | 1 块（旧默认） | 10.76 s（约 18%） | 1.86 s | 320 ms |
+  | 2 块 | 0 | 0.14 s | 360 ms |
+  | 4 块（现默认） | 0 | 0.14 s | 360 ms |
 
-异常状态：
+- 预滚静音单独统计（`prefill_*`），不算下溢；只有稳态补零才计
+  `underrun_frames` / `starved_reads`。
 
-```text
-Running -> Degraded -> Running
-Running -> Failed -> Empty
-```
+### 5.2 采样率转换
 
-`Degraded` 用于以下情况：
+WASAPI 共享模式只接受设备自身混音格式（通常 48 kHz），固定开 16 kHz 直接报
+`Invalid sample rate`。按设备原生采样率开流，软件转到引擎的 16 kHz：
 
-- 虚拟麦克风不可用，但监听输出正常。
-- GPU 初始化失败，切换到 CPU。
-- 单次推理超时，但没有连续丢帧。
+- `panda_infer.dsp.StreamResampler` 是**有状态**的：FIR 历史跨块保留，
+  分块结果与一次性连续处理逐样本一致（有测试），否则每个块边界都是咔哒声。
+- 整数倍率走多相路径，非整数退回线性插值；63 抽头线性相位群延迟约
+  0.6 ms（48 kHz），远小于块长。
 
-`Failed` 用于：
+### 5.3 门限、限幅与增益
 
-- 模型损坏。
-- 音频设备无法打开。
-- 连续推理超时。
-- 进程崩溃。
+| 组件 | 行为 | 默认 |
+| --- | --- | --- |
+| `NoiseGate` | 按块判断、块内斜坡、开快关慢保字头；**不是降噪器** | 关，`-45 dB` 推荐 |
+| `SoftLimiter` | 拐点以下透明，以上 tanh 平滑压顶，永不削顶 | 开，上限 0.891（约 -1 dBFS） |
+| `OutputGain` | 限幅前固定增益 -24…+12 dB | 0 dB |
+| 输入增益 | 降噪与噪声门之前 | 0 dB |
+| 监听增益 | 独立于主输出 | 0 dB |
 
-### 3.10 配置和日志
+噪声门实测只对**低于阈值**的平稳噪声有效（16 kHz、160 ms、-45 dBFS）：
 
-配置分为：
+| 静音段环境声 | 抑制 |
+| --- | --- |
+| 白噪声 -60 dB / 风扇 -50 dB | 29.1 / 29.8 dB |
+| 风扇 -40 dB / 键盘 -40 dB | 0.0 / 0.1 dB |
+| 别人说话 -40 / -30 dB | 1.0 / 0.1 dB |
 
-```text
-用户配置：设备、音量、监听、最近音色
-音色配置：音色包内 YAML
-运行时配置：采样率、块大小、线程数、后端
-构建配置：版本、渠道、第三方依赖
-```
+### 5.4 降噪（DeepFilterNet，可选）
 
-日志分级：
+- DFN 的 Python API 是离线的（`enhance()` 每次重置循环状态），逐块直调与整段
+  差异达 0.235，"保留状态"反而更差（0.60）。采用**重叠相加 + 交叉淡化**
+  （`panda_infer.denoise.Denoiser`）：差异 0.0595，代价 160 ms 延迟、1.6× CPU。
+  交叉淡化必须在 DFN 自己的 48 kHz 上做，只降一次采样。
+- 三档：`strong`（完整抑制，默认）/ `balanced`（≤12 dB）/ `gentle`（≤6 dB）。
+  10 dB SNR 真实语音 + 风扇/键盘实测：
 
-```text
-ERROR
-WARN
-INFO
-DEBUG
-TRACE
-```
+  | 档位 | 停顿段抑制（风扇/键盘） | 语音段 SI-SDR |
+  | --- | --- | --- |
+  | strong | 23.9 / 33.5 dB | +2.32 / +2.58 dB |
+  | balanced | 11.3 / 12.3 dB | +2.11 / +2.73 dB |
+  | gentle | 5.8 / 6.3 dB | +1.23 / +1.83 dB |
 
-默认保留：
+- 它**不处理别人说话**（-0.3 dB）：是降噪器不是说话人分离器。
+- 集成在噪声门**之前**，默认关闭；界面标注 +160 ms 与"不去除他人说话"。
+- 复现测量：`scripts\evaluate_denoise.py`。
 
-- 时间
-- 模块
-- 事件代码
-- 耗时
-- 推理后端
-- 设备变化
+### 5.5 监听输出
 
-默认不记录：
+第二路独立播放（`MonitorTap` 把主设备刚播的块扇出到自己的抖动缓冲）：
+不从主输出抢采样、不影响转换时序；输出走虚拟声卡时也能听见自己；
+选"不监听"关闭。设备下拉对虚拟设备加"（虚拟声卡）"标记，机器上没有虚拟
+声卡时输出列表下方给一行提示。
 
-- 原始音频
-- 音色包内容
-- 用户输入文本
-- 完整本机绝对路径
+## 6. 推理引擎
 
-## 4. 开放音色包
+### 6.1 MeanVC2 优先与变体选择
 
-音色包使用 ZIP 分发，内部是明文目录。
+公共模型：ASR（Fast-U2++）、DiT CFM、Vocos、FCPE；音色专属：`spk_emb`、
+`register`、可选 `dit.safetensors`。
 
-最小零样本音色包：
-
-```text
-manifest.json
-mvc2_<id>_rt.yaml
-assets/
-  register.json
-  spk_emb.npy
-reference/
-  reference.wav
-```
-
-专属 DiT 音色包额外包含：
-
-```text
-assets/
-  dit.safetensors
-```
-
-不允许把密钥、令牌和绝对本机路径写入 Manifest。
-
-详细规范见 `VOICE_PACK_FORMAT.md`。
-
-## 5. 引擎路线
-
-### 5.1 MeanVC2 优先
-
-原因：
-
-- 低延迟流式推理
-- 官方 Apache-2.0 许可证
-- 模型规模较小
-- 适合 CPU 推理
-- 支持零样本和说话人微调
-
-两个变体的取舍（同机实测，见 10.4 节）：
+两个变体同机实测（160 ms 块、CPU）：
 
 | | 40ms | 120ms |
 | --- | --- | --- |
@@ -604,613 +443,423 @@ assets/
 | 恒等保持（自身→自身） | 0.732 | **0.791** |
 | 转换后 vs 目标 | 0.701 | 0.696 |
 
-上游 README 里"110 ms 端到端"说的是 40ms 变体按自己的 40 ms 分块算出来的
-**首包延迟**。我们的流式块对两个变体都是 160 ms，这个优势用不上；反过来
-40ms 变体每秒音频要跑大约三倍的 DiT 步数。所以**默认用 120ms**，40ms 保留
-可选——如果将来把音频块改小以发挥它的分块粒度，它才会重新变成更优选择。
+上游 README 的"110 ms 端到端"是 40ms 变体按**自己的 40 ms 分块**算的首包
+延迟；我们的流式块对两者都是 160 ms，该优势用不上，而 40ms 每秒要跑约三倍
+DiT 步数。**默认 120ms**，40ms 保留可选——只有把音频块改小它才会翻身。
 
-公共模型：
+### 6.2 线程与预热
 
-```text
-ASR / Fast-U2++
-DiT CFM
-Vocos
-FCPE
-```
+- batch=1 小模型**单线程最快**（实测 1 线程 115 ms / 2 线程 137 ms / 8 线程 154 ms），
+  官方 `torch.set_num_threads(1)` 是验证过的默认，不要调大。
+- **必须预热**：预热前首块 348 ms（连吃 5 块缓冲），预热 3 块静音后最大 133 ms；
+  预热后要重置流式缓存，否则丢音频开头。桌面端首块等待 348→133 ms 即来源于此。
+- 约 0.4% 的块超 160 ms 预算——抖动缓冲就是为此存在的，不是每块都必须准时。
 
-音色专属资源：
+### 6.3 ONNX 导出现状（去 Python 化的边界）
 
-```text
-spk_emb
-register
-可选 dit
-```
+| 阶段 | 结论 | 关键坑 |
+| --- | --- | --- |
+| Vocoder | ✅ 已验证 | 入口是 `decode` 不是 `forward`；iSTFT 的 `aten::complex` 只有 dynamo 能翻；dynamo 的 `ScatterND` 索引是 int32，需转 int64 且 Cast 必须紧贴消费者（放图开头会先吃 25 GB 内存再放弃）。相对偏差 4.1e-05 |
+| ASR | ✅ 两变体已验证 | 恰好相反：dynamo 在符号形状 `Eq(u0, -1)` 上失败，旧导出器一次通过；offset 必须 ≥ 缓存长度，否则切出空张量报维度错误。相对偏差 4.2e-07 / 4.9e-07 |
+| DiT | ❌ 当前不可行 | `jit.script` 卡未标注默认参 + jaxtyping 注解；`jit.trace` 撞 KV 缓存数据相关分支（trace 会把布尔烧成常量，不泛化） |
 
-### 5.2 RVC 兼容
-
-RVC 作为后续兼容后端，用于：
-
-- 支持已有 RVC 社区模型
-- 提供不同的声线和质量选择
-- 作为 MeanVC2 不可用时的回退
-
-不要把 RVC 的 Python 目录直接嵌入桌面程序。后端适配层应负责：
-
-- 模型格式检查
-- 特征提取
-- 推理封装
-- 资源释放
-
-### 5.3 DSP 回退
-
-始终提供基础 DSP 效果：
-
-- 升调
-- 降调
-- 机器人
-- 电话音
-- 混响
-- 压缩
-
-DSP 后端用于排障和低资源环境。
-
-## 6. 音色特征工具
-
-工具目标：
-
-1. 接收一段或多段参考音频。
-2. 调用官方 MeanVC2 提取说话人嵌入。
-3. 将结果保存为 `spk_emb.npy`。
-4. 生成 `register.json`、`manifest.json` 和运行 YAML。
-5. 打包成 ZIP。
-
-工具输出开放、可校验、可迁移的明文音色包。
-
-当前命令：
+结论：**当前工具链做不出纯 ONNX/C++ 运行时**，除非把 DiT 流式路径重写成可
+trace 的形式。Python 引擎实测 RTF 0.757、零下溢，继续作为后端；ASR/vocoder
+导出作为已验证基础保留。导出命令会与 PyTorch 对比数值，相对偏差 >1e-3 直接
+报错：
 
 ```powershell
-$env:PYTHONPATH = "src"
-python -m panda_cli --help
+python -m panda_infer.onnx_export --meanvc2-root ..\deps\MeanVC2 `
+  --stage vocoder --output dist\vocoder.onnx
+python -m panda_infer.onnx_export --meanvc2-root ..\deps\MeanVC2 `
+  --stage asr --model 40ms --output dist\asr-40ms.onnx
 ```
 
-统一命令面：
+## 7. 音色包
+
+### 7.1 格式 v1
+
+音色包是明文 ZIP，`manifest.json` 位于根目录（不套随机目录）：
 
 ```text
-panda pack      生成开放音色包
-panda infer     离线 WAV 变声
-panda realtime  实时变声
-panda devices   音频设备枚举，支持 --json
-panda doctor    环境、模型资产、音色包和设备诊断
+voice-pack.zip
+  manifest.json
+  mvc2_<id>_rt.yaml
+  assets/
+    register.json
+    spk_emb.npy
+    dit.safetensors          # 仅 fine-tuned，可选
+  reference/reference.wav    # 可选，建议保留
+  LICENSES.json              # 可选
 ```
 
-旧命令 `panda-pack`、`panda-infer` 和 `panda-rt` 保持兼容，
-桌面客户端与命令行共同调用 `panda realtime`，内部 worker 只负责进程隔离。
+资源规则：`zero-shot` 必须有 `spk_emb.npy` + `register.json`；`fine-tuned`
+必须有 `dit.safetensors` + `spk_emb.npy`；引擎公共模型不进音色包；
+包内只允许 `/` 分隔的相对路径，禁止 `../`、绝对路径、驱动器/UNC 前缀、
+符号链接与硬链接。Manifest 不得含密钥、令牌、绝对路径、可执行文件与 DLL。
 
-## 7. 训练策略
+`manifest.json` 关键字段：
 
-### 7.1 零样本音色
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| schema_version | 是 | 当前 1 |
+| format | 是 | 固定 `panda.voice-pack` |
+| id | 是 | 只允许小写字母、数字、短横线 |
+| name / version | 是 | 展示名 / 语义化版本 |
+| engine | 是 | `meanvc2` / `rvc` / `dsp` |
+| kind | 是 | `zero-shot` / `fine-tuned` / `dsp` |
+| entry / assets_dir | 是 | 运行 YAML / 资产目录（包内相对路径） |
+| files | 是 | 除 manifest 外全部文件的 path+size+sha256（小写十六进制），安装器必须实校验 |
 
-不需要训练 DiT。
+安装原子性：读 ZIP → 解压到临时目录 → 路径检查 → 读 manifest → 校验大小与
+SHA-256 → 检查 schema 与引擎支持 → 移入 `voices\<id>` → 更新索引。
+任一步失败保持原包不变。限制（代码常量 + 测试覆盖）：ZIP ≤2 GB、单文件
+≤1 GB、文件数 ≤256、解压总量 ≤4 GB。
 
-流程：
+升级规则：同 id 可覆盖；新旧 `schema_version` 不一致拒绝（`unsupported_schema`，
+原包不动）；覆盖前校验已装目录的 id 与新包一致；删除只删 `voices\<id>`，
+先验 id 合法性（`../escape` 直接拒）、目录含 manifest 且 id 相符、解析路径
+必须在 `voices_root` 正下方，公共模型不会被触及。
 
-```text
-参考音频
-  -> 提取 spk_emb
-  -> 生成 register
-  -> 生成 YAML
-  -> 打包
-```
-
-CPU 可以完成。
-
-### 7.2 说话人微调
-
-需要训练或微调 DiT。
-
-流程：
-
-```text
-目标说话人数据
-  -> Mel / BN / XVector
-  -> 微调 MeanVC2 DiT
-  -> 导出 dit.safetensors
-  -> 与 spk_emb 和 register 一起打包
-```
-
-CPU 只适合检查流程，正式训练应使用 GPU。
-
-## 8. 开发阶段
-
-### 阶段 0：规范和工具
-
-- 开发文档
-- 音色包格式
-- 音色特征工具
-- 示例音色包
-
-验收：
-
-```text
-工具可以从参考音频生成完整开放音色包
-```
-
-### 阶段 1：离线推理
-
-- MeanVC2 模型加载
-- 文件到文件变声
-- 模型资源自动发现
-- 错误日志
-
-验收：
-
-```text
-输入一个 WAV，输出一个目标音色 WAV
-```
-
-### 阶段 2：实时音频
-
-- WASAPI 采集
-- 分块推理
-- 环形缓冲
-- 延迟统计
-- 断流恢复
-
-当前 Python runtime 会输出处理耗时、音频块时长、缓冲深度和过载状态。
-`panda_core` 提供独立的格式解析组件，Qt 客户端据此显示 RTF 和过载提示。
-
-验收：
-
-```text
-耳机监听下可以连续运行 30 分钟
-```
-
-### 阶段 3：桌面界面
-
-- 音色画廊
-- 设备选择
-- 参数面板
-- 导入和删除音色包
-- 性能状态
-
-### 阶段 4：虚拟麦克风
-
-- 输出路由
-- 安装状态检测
-- 失败回退到扬声器
-
-当前已支持选择任意输出设备，并由 `panda doctor` 识别常见的用户级
-虚拟播放设备。创建系统虚拟麦克风仍需要用户安装虚拟音频驱动；没有驱动时
-回退到普通播放设备。
-
-发行策略已经确定并写入 [VIRTUAL_AUDIO.md](VIRTUAL_AUDIO.md)：第一版依赖
-用户自装的虚拟声卡（VB-CABLE / VoiceMeeter），`panda route-check` 在终端给出
-两端该选哪个设备（没有可用路由时退出码 1），桌面端只负责把虚拟设备标出来、
-并在没装虚拟声卡时给一行提示；自带签名驱动留到后续。
-
-已加入第二路监听输出：变声结果在主输出之外可以同时播给本机扬声器，让说话者
-听见自己。监听走独立的抖动缓冲（`MonitorTap`），不会从主输出抢采样，也不
-影响转换时序；不需要监听时在界面上选"不监听"。
-
-### 阶段 5：公开发布
-
-- Windows 安装包
-- 可重定位 Python 运行时和模型资产
-- 许可证和第三方声明
-- 模型格式文档
-- 用户手册
-- 版本升级
-
-当前已有 `scripts/package_windows.ps1`，可以生成带 Qt 运行库和 Python
-源码的便携目录。使用 `-BundlePython -BundleMeanVC2` 时，还会生成可重定位
-的 CPU Python 环境和 40ms 模型资产。`scripts/install_windows.ps1` 提供
-用户级安装、开始菜单快捷方式和保留音色的卸载流程。正式发布仍需解决
-数字签名。
-
-打包脚本会生成 `package-manifest.json`，安装脚本在复制前逐文件校验大小和
-SHA-256，发现缺失、改动或越界路径就中止，不留下半个安装目录。再次以
-`-Force` 运行安装脚本即为原地升级：只替换 `app/`，音色目录保持不变，
-`install.json` 记录 `previous_version`。
-
-### 阶段验收总表
-
-| 阶段 | 交付物 | 必须验证 |
-|---|---|---|
-| 0 | 文档、格式、导出工具 | 可以生成并校验音色包 |
-| 1 | 离线 MeanVC2 原型 | WAV 输入，WAV 输出 |
-| 2 | 实时音频管线 | 30 分钟连续运行 |
-| 3 | 桌面客户端 | 可完成设备选择和音色切换 |
-| 4 | 虚拟麦克风 | 其他应用可以识别虚拟设备 |
-| 5 | 安装包和文档 | 新机器可以完成安装和使用 |
-
-### Definition of Done
-
-功能完成必须同时满足：
-
-- 有自动化测试。
-- 有错误处理和用户提示。
-- 有性能数据。
-- 有日志和诊断信息。
-- 有文档更新。
-- 有回滚或降级路径。
-- 不引入未记录的运行时依赖。
-- 修改音色包格式时必须提供版本迁移说明。
-
-## 9. 测试策略
-
-- 单元测试：Manifest、路径校验、哈希、配置解析
-- 集成测试：音色包安装、删除、升级
-- 音频测试：固定输入和输出回归
-- 实时测试：延迟、XRUN、设备热插拔
-- 故障测试：错误模型、损坏 ZIP、磁盘满、权限不足
-- 长稳测试：至少 8 小时连续运行
-
-### 9.1 核心测试矩阵
-
-| 模块 | 单元测试 | 集成测试 | 长稳测试 |
-|---|---:|---:|---:|
-| Manifest | 是 | 是 | 否 |
-| ZIP 安装 | 是 | 是 | 否 |
-| YAML 解析 | 是 | 是 | 否 |
-| 音频设备 | 部分 | 是 | 是 |
-| 重采样 | 是 | 是 | 否 |
-| MeanVC2 后端 | 部分 | 是 | 是 |
-| 虚拟麦克风 | 否 | 是 | 是 |
-| IPC | 是 | 是 | 否 |
-
-### 9.2 音频回归基准
-
-固定以下测试素材：
-
-**素材必须是真实语音。** 项目早期用的 `smoke.wav` 其实是一段 220 Hz 正弦波
-（波峰因数正好 1.414、主频 220 Hz），于是所有"变声"测试只验证了管线通不通，
-从未证明说话人身份真的被换掉——正弦波的说话人嵌入没有意义。现在用
-`scripts/make_test_speech.ps1` 调用 Windows 自带 TTS 生成真实语音（离线、
-无额外依赖），并用 `panda voice-check` 做客观判定：
+### 7.2 导出工具
 
 ```powershell
-.\scripts\make_test_speech.ps1 -VoiceName "Microsoft Zira Desktop" `
-  -Text "..." -Output dist\speech-zira.wav
-
-panda voice-check `
-  --meanvc2-root <MeanVC2 仓库> `
-  --source-wav dist\speech-zira.wav `
-  --target-wav dist\speech-huihui.wav
+panda pack --name "我的音色" --id my-voice --audio 1.wav `
+  --meanvc2-root ..\deps\MeanVC2 --python python --device cpu `
+  --output out --overwrite
 ```
 
-判定依据是说话人嵌入的余弦相似度：转换后的结果应当比源更接近目标。命令还会
-跑一次"源→自身"的对照，用来确认这个度量本身可信。开发机实测：
+- 输入支持 WAV / MP3 / FLAC / OGG / M4A / AAC / WMA（soundfile 解码、混单声道、
+  重采样 16 kHz、写规范 PCM WAV 参考）。
+- 调用官方 MeanVC2 提取说话人嵌入（`extract_spk_emb.py`，subprocess 隔离），
+  生成 `spk_emb.npy`、`register.json`、运行 YAML、`manifest.json` 并打包。
+- 发布物 `Panda-Pack.zip` **不带环境**（源码 + 使用说明，几 MB），使用方自备
+  Python 3.10+、`numpy soundfile scipy pillow` 与 MeanVC2 仓库；解压后
+  `python -m panda_pack --help`。
+
+### 7.3 安装、删除与目录
+
+- 桌面端：单个安装（文件选择 + 覆盖确认）、**批量安装**（多选/拖放，逐项进度
+  与失败清单横幅）、行内删除（二次确认）、搜索/收藏/排序。
+- 命令行：`panda_cli install <pack.zip> <voices-root> [--overwrite]`、
+  `list`、`remove <voices-root> <pack-id>`（错误码见 core `ErrorCode`，
+  如 6=unsupported_schema、12=not_found）。
+- 错误码映射成中文界面文案，覆盖"已安装/schema 不匹配/校验失败"等。
+- **`voices/` 只在本地**：不进 git、不进 Release 资产（打包脚本自动排除）、
+  升级覆盖不删除；音色涉及授权，任何仓库都不放。
+
+## 8. 桌面应用
+
+液态玻璃界面，主要能力：
+
+- **音色库**：卡片网格、试听（`panda preview`，按参考音频试最多 8 秒，用所选
+  输出设备原生采样率）、搜索（id+名称，刷新后保持）、收藏、排序（收藏优先/名称）、
+  安装/删除/批量安装。
+- **底部控制条**：开启/停止、监听开关、输入音量、噪声门（开关+阈值）、
+  降噪（开关+三档，运行中禁改）、输入电平表、延迟状态条（2.5s OutCubic 平滑）。
+- **设置弹窗**（玻璃风格）：
+  - 音频页：输出（首行"不输出"占位；虚拟设备标记；无虚拟声卡时一行提示与
+    VB-CABLE 下载引导）、输入、监听、麦克风测试（`panda mic-test`：录 3 秒回放，
+    区分采集/权限/输出问题）、输入/输出电平条、模型（120ms/40ms）、算力
+    （cpu/cuda）、预滚/缓冲上限（`clamp_latency` 钳制并回显）、延迟档位。
+  - 常规页：主题（浅色/深色/跟随系统）、诊断入口。
+- **诊断**：运行日志面板（跟随文件尾；`[panda.metrics]` 分流到数值区）+
+  「打开日志文件」按钮；只有真发生过 starve/下溢/丢帧才显示诊断行，
+  健康会话不刷一排零。
+- **会话持久化**：音色包、设备、模型、算力、延迟、门限、降噪档、主题、
+  收藏与排序全部跨重启记忆；恢复的音色包必须仍存在才生效。
+- **崩溃恢复**：worker 异常退出自动重启（见 4.1），关闭程序时主动停 worker。
+
+未实现（明确不做在 1.0.0）：音高变换（需要真正的流式变调算法）。
+
+## 9. 虚拟声卡路由
+
+变声器只完成一半：把麦克风换成目标音色。另一半是让**别的软件**听到结果——
+Discord/游戏/OBS 都只从"麦克风"取声，需要虚拟声卡当桥：
 
 ```text
-对照（源→自身）：转换后 vs 源 +0.7323
-源 vs 目标      +0.2831
-转换后 vs 目标  +0.7010
-转换后 vs 源    +0.2968
+真实麦克风 ──► Panda（变声） ──► 虚拟声卡写入端（CABLE Input）
+                                      │
+                                      ▼
+                             虚拟声卡采集端（CABLE Output） ──► Discord/游戏/OBS
 ```
 
-相似度从 0.28 升到 0.70，同时远离源，说明转换确实换了说话人。
+**v1 不自带驱动**：内核驱动要管理员权限 + 代码签名，会把"下载即用"变成
+"先过一遍安全警告"。依赖用户自装虚拟声卡（VB-CABLE 免费最简 / VoiceMeeter
+功能更多），装完 Panda 本身仍是用户级程序。
 
-- 安静房间男声
-- 安静房间女声
-- 手机麦克风远场
-- 带风扇噪声
-- 带背景音乐
-- 持续静音
-- 短促爆破音
+步骤：
 
-每个后端输出记录：
+1. 桌面端输出下拉没有虚拟声卡时给**去 www.vb-cable.com 下载**按钮。
+   安装三步顺序不能错：**解压 → 右键管理员运行 → 重启**（否则报
+   `LOADDRV: The path does not exist`(-106)）。
+2. 终端验证路由：`panda route-check --python <python>`，有路由时直接给出两端
+   该选的设备名；没有时退出码 1。此命令只留在终端，界面不调用。
+3. Panda 输出选 `CABLE Input`（虚拟设备带"（虚拟声卡）"标记）。
+4. 其它软件麦克风选 `CABLE Output`。
+5. 可选监听：输出写虚拟声卡的同时，"监听输出"选自己的耳机（独立缓冲，
+   不抢主输出采样）；选"不监听"关闭。
 
-- 端到端延迟
-- 实时率
-- 丢帧数量
-- 音频响度
-- 频谱差异
-- 人工试听结果
+已知限制与排错：
 
-## 10. 性能目标
+- 采样率要一致（44.1 kHz 且驱动不重采样可能变调/杂音）。
+- 虚拟声卡不提供降噪，噪声会被一起转换；监听有自己的预滚，与主输出不完全同步。
 
-第一版建议目标：
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| 安装器报 -106 | 没用管理员身份，或在压缩包预览里直接运行 | 解压后右键**以管理员身份运行** |
+| 装完没有设备 | 官网要求重启 | 重启电脑后点**刷新** |
+| route-check 无路由 | 只装了一端/没装 | 装 VB-CABLE 后重跑 |
+| 对方听不到 | 该软件麦克风没改成 CABLE Output | 在该软件里改 |
+| 自己是聋的 | 输出被独占 | 监听选自己的耳机 |
 
-- 端到端额外延迟：小于 500 ms（见下方实测预算；原定的 150 ms 在
-  MeanVC2 的 160 ms 分块下无法达成）
-- CPU 实时率：不高于 1.0
-- 启动后首次可发声：小于 10 秒
-- 音色切换：小于 5 秒
-- 内存占用：单音色小于 2 GB
-- 连续运行：8 小时无泄漏
+自带签名驱动留作后续（内核驱动 + EV 证书 + 一次管理员安装）。
 
-最终数值根据目标硬件和模型后端调整。
+## 10. 训练（MeanVC2）
 
-### 10.1 延迟预算
+官方项目：https://github.com/ASLP-lab/MeanVC2
 
-端到端延迟由三段构成，实测量级如下（40ms 模型、CPU、WASAPI 真机）：
+### 10.1 两种使用方式
+
+- **零样本**（默认路径）：干净目标人声提取说话人嵌入即可，公共基座推理，
+  音色包只有几 KB（`spk_emb + register + YAML`），CPU 可完成。
+- **说话人微调**：训练 DiT，音色包增加几十 MB（`dit.safetensors`）。
+
+### 10.2 官方环境与数据
+
+```bash
+git clone https://github.com/ASLP-lab/MeanVC2.git && cd MeanVC2
+conda create -n meanvc2 python=3.11 -y && conda activate meanvc2
+pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt
+python initialization.py --task all        # WavLM 微调权重按官方 README 手动下载
+```
+
+数据建议：先做 5–10 分钟冒烟训练再扩量。零样本 5–30 秒即可；微调试听
+10–30 分钟、初步效果 1–3 小时、稳定 10 小时以上。要求单人、无音乐、无混响、
+无多人对话、尽量无噪声削波、片段 3–15 秒、WAV；文件名只用小写字母/数字/
+短横线/下划线。
+
+### 10.3 特征与训练
+
+```bash
+# 120ms+40ms 模型
+python preprocess/extract_mel.py       --input_dir data/wavs --output_dir data/mels
+python preprocess/extract_bn_160ms.py  --input_dir data/wavs --output_dir data/bns
+python preprocess/extract_spk_emb.py   --input_dir data/wavs --output_dir data/xvectors
+python scripts/create_filelist.py --bn-dir data/bns --mel-dir data/mels \
+  --xvector-dir data/xvectors --output data/train.list
+# 40ms 模型用 extract_bn_80ms.py 替代 extract_bn_160ms.py
+
+DATASET_PATH=data/train.list EXP_NAME=speaker_120ms bash scripts/train_120ms_40ms.sh 0
+```
+
+显存不足按序降 `batch-size`/`max-len`、提 `grad-accumulation-steps`、开
+`grad-ckpt 1`。先用小参数验证能存取 checkpoint 再上正式参数。
+
+已知问题：
+
+- 训练脚本用 Bash + `accelerate` + 进程替换，Windows 请用 WSL2 或 Linux GPU 机。
+- 上游 `default_config.yaml` 写着 `distributed_type: MULTI_NPU`，NVIDIA 环境
+  要生成自己的 Accelerate 配置。
+- 上游 shell 脚本**没有直接暴露预训练 checkpoint 参数**——上线训练前必须确认
+  `train.py` 从 `meanvc2_120ms_40ms.safetensors` 初始化，否则可能是从头训练。
+- CPU 只适合特征提取与排障；正式训练 8 GB 显存起步，12–24 GB 更稳。
+
+### 10.4 产物入包
+
+```text
+assets/{dit.safetensors, spk_emb.npy, register.json} + mvc2_<id>_rt.yaml + manifest.json
+```
+
+导出前检查：干净环境可加载、特征维度与运行时一致、YAML 的 dit 路径正确、
+`spk_emb` 与训练说话人一致、版本号递增、manifest 哈希重算。
+**训练完成 ≠ 音色包可用**：至少过离线推理、实时推理、音高、响度、长句、
+静音输入六关。
+
+## 11. 性能与实测数据
+
+### 11.1 延迟预算（端到端约 440 ms 的构成）
 
 | 环节 | 量级 | 说明 |
 | --- | --- | --- |
-| 输入分块 | 160 ms | 引擎按 160 ms 块处理，必须等一块填满 |
-| 推理 | 120 ms（max 143 ms） | 单线程 CPU |
-| 输出预滚 | 160 ms | 抖动缓冲目标深度，可调 |
+| 输入分块 | 160 ms | 必须等一块填满 |
+| 推理 | ~120 ms（40ms 变体；120ms 变体约 54 ms） | 单线程 CPU |
+| 输出预滚 | 160 ms（1 块默认） | 可调，换抗抖动余量 |
 
-合计约 440 ms。**原定的 150 ms 目标在 MeanVC2 上无法达成**：光是分块和
-预滚就已经 320 ms，与实现质量无关。要做到 150 ms 量级需要换用更小的分块
-模型（例如真正的 40 ms 帧级流式引擎），那是引擎层面的替换，不是调参能解决的。
+**原定"低于 150 ms"在 MeanVC2 上无法达成**：光分块 + 预滚就 320 ms，与实现
+质量无关。要 150 ms 量级需要帧级流式引擎（引擎层替换，不是调参）。真机
+含系统缓冲的端到端实测：p50 289 ms / p95 378 ms。
 
-预滚默认 1 块。开发机上实测 113 个连续真实块下溢为 0、最大推理 143 ms；
-机器更慢或后台负载更重时，可以在界面或命令行把预滚调到 2 块，代价是多
-160 ms 延迟。
+### 11.2 CPU 基准（480 块 ≈ 76.8 秒音频）
 
-不过**稳态缓冲深度由修剪阈值决定，而不是预滚目标**：缓冲高于
-「预滚 + 修剪余量」才会回收盈余，而被回收的是**已经转换好的音频**——等于把
-话说完了再掐掉。参考机 60 秒实测（160 ms 块、预滚 1 块）：
+```text
+CPU:      Intel Core Ultra 5 125H (14C/18T)，16 kHz，160 ms 块，单线程
+RTF:      0.757        延迟: mean 121 / p50 120 / p95 132 / p99 145 ms
+超时块:   2 / 480      长期漂移: 无     初始化: ~6 秒（含 WavLM 说话人模型）
+```
 
-| 余量 | 被修剪掉的已转换音频 | 输出下溢 | 缓冲峰值 |
-| --- | --- | --- | --- |
-| 1 块（旧默认） | 10.76 s（约 18%） | 1.86 s | 320 ms |
-| 2 块 | 0 | 0.14 s | 360 ms |
-| 4 块（现默认） | 0 | 0.14 s | 360 ms |
+### 11.3 30 分钟连续运行（阶段验收）
 
-余量 1 块时缓冲恰好压在阈值上，一次正常推理抖动就会触发修剪，表现就是
-**说话漏字**；余量放到 2 块以上修剪一次都没发生，而且峰值深度并没有变大——
-因为播放端本来就按实时速率把盈余消耗掉了，根本轮不到丢。所以默认余量取
-4 块，留出机器更慢时的余地。`trim_margin_chunks` 是参数，调整前请先按上面
-的方法实测。
+```text
+11177 块，下溢 0，饿读 0，丢帧 0，输入丢失 0
+内存 2021 → 2023.6 MB（非单调，无泄漏），线程 38–41，CPU 均值 0.736 核
+采集与播放无时钟漂移；单块最大 242 ms（正是抖动缓冲要吸收的）
+```
 
-30 分钟连续运行（阶段 2 验收）实测：11177 块、下溢 0、丢帧 0、内存
-2021→2023.6 MB 且非单调（无泄漏）、CPU 平均 0.736 核、采集与播放设备之间
-无时钟漂移。
+### 11.4 端到端仿真（`panda simulate`，WAV 驱动整条管线）
 
-### 10.2 环境噪声与降噪
+```text
+20 秒音频 / 40ms 变体：125 块，平均推理 118.9 ms，最大 133.1 ms（预热后）
+下溢 0，缓冲丢帧 0，输出 20.42 s
+预热前首块 348 ms → 预热 3 块后 133 ms
+```
 
-真实麦克风的输入不只是人声，还有风扇、键盘、交通声，以及**别人说话**。
-下面是在 16 kHz、160 ms 分块、阈值 -45 dBFS 下的实测结果：
+预滚取舍：1 块=启动静音 0.32 s、峰值 157 ms；2 块=0.48 s、峰值 133 ms，
+均零下溢。`--prefill-chunks` / `--max-backlog-chunks` 在 realtime、simulate
+与启动器上都可调。
 
-| 静音段的环境声 | 静音门抑制 |
+## 12. 打包与发布
+
+### 12.1 打包命令
+
+```powershell
+.\scripts\package_windows.ps1 -BundlePython -BundleMeanVC2
+```
+
+流程：构建 → CTest → 暂存目录（`dist\Panda.building-<pid>`）→ windeployqt
+（锁文件重试 3 次）→ 签名（有证书时）→ conda-pack 环境 + 解压（瞬时故障重试
+3 次）+ conda-unpack → 复制 DeepFilterNet/MeanVC2 → 自带 doctor 自检 →
+文档与 manifest（逐文件 SHA-256）→ **原子换入** `dist\Panda` → 分切四资产。
+
+主要参数：`-BundlePython`、`-BundleMeanVC2`、`-NoZip`（不出资产）、
+`-SkipTests`、`-CertificateThumbprint`/`-TimestampUrl`（签名）、
+`-OutputDirectory`。输入路径全部有默认值（`.tools` / `..\deps\MeanVC2` /
+`%LOCALAPPDATA%\DeepFilterNet\...`）。
+
+### 12.2 四资产（GitHub Release）
+
+| 资产 | 内容 | 约大小 |
+| --- | --- | --- |
+| `Panda-<版本>.zip` | 主程序：exe、Qt 运行库、`share\python`（引擎源码）、文档、`launch.cmd`、manifest | ~0.1 GB |
+| `Panda-runtime.zip` | `python\`（完整 conda 环境，自包含 VC++ 运行库）+ `DeepFilterNet\` | ~0.7 GB |
+| `Panda-Models.zip` | `MeanVC2\`（白名单模型，约 1.8 GB 解压后） | ~1.7 GB |
+| `Panda-Pack.zip` | `Panda-Pack\`：导出工具源码 + `README.txt` 使用说明，不带环境 | 几 MB |
+
+规则：
+
+- **单资产 ≤2 GiB**（GitHub 上限），打包后逐个校验，超限直接报错——
+  模型包按 1.8 GB 阈值预留分卷余地。
+- 资产内**不含 `voices/`**（用户私密音色，脚本自动排除）；本机
+  `dist\Panda\voices` 保留用于本机验证。
+- 主包清单 `package-manifest.json` 描述**组装后**的完整目录（三包解压到一起
+  即与清单一致），安装器据此逐文件校验。
+
+### 12.3 用户解压方式（零配置）
+
+三个应用包解压到**同一个空文件夹**（并排合并），然后双击：
+
+```text
+Panda-1.0.0.zip   ─┐
+Panda-runtime.zip  ├──► 同一文件夹：panda_desktop.exe、launch.cmd、
+Panda-Models.zip   ─┘              python\、DeepFilterNet\、MeanVC2\
+                                        │
+                                  双击 launch.cmd
+```
+
+`launch.cmd` 设置 `ROOT` 下的 `python\`、`MeanVC2\`、`DeepFilterNet\`、
+`share\python`（PYTHONPATH）后拉起 `panda_desktop.exe`，全部相对自身路径，
+不依赖环境变量、不挑盘符路径。
+
+### 12.4 安装版（仅本机/可选分发）
+
+```powershell
+.\scripts\install_windows.ps1 -SourceDirectory dist\Panda   # 复制前逐文件校验 manifest
+.\scripts\uninstall_windows.ps1 -InstallDirectory <dir>      # 保留 voices，-RemoveVoices 才删
+```
+
+`-Force` 原地升级：只替换 `app/`，音色目录保留，`install.json` 记录
+`previous_version`。`-SkipVerify` 故意装未校验包；`-RequireSignature`
+要求签名（校验和只证明没被改，签名才证明谁打的）。
+
+### 12.5 发布流程（打 tag 才打包）
+
+**只有用户明确要求打 tag 时才执行发布打包**；Release 说明保持简要
+（指向 CHANGELOG，不写详版）。清单：
+
+1. 两处版本号改成同一值（3.2），跑 Python 测试 + CTest 全绿。
+2. 决定取舍：`dist\Panda\voices` 的私密音色不会进资产（自动排除），无需手动清理；
+   若要绝对保险，打包前手动清空 `dist\Panda\voices`。
+3. 本机打包：`.\scripts\package_windows.ps1 -BundlePython -BundleMeanVC2`
+   （终端**不要**用 `2>&1 | Tee` 转发——脚本 `$ErrorActionPreference=Stop`
+   会把 windeployqt 的良性 stderr 警告当致命错误；要留日志用
+   `cmd /c "... > log 2>&1"` 级重定向）。
+4. 换路径验收（模拟换机）：把四个资产解压到一个**全新的空路径**，清掉
+   `PANDA_*`/`PYTHONPATH`，依次跑：
+   ```powershell
+   python\python.exe -m panda_cli doctor --meanvc2-root <解压目录>\MeanVC2 `
+     --deepfilter-root <解压目录>\DeepFilterNet\DeepFilterNet3
+   # （PYTHONPATH 指向 <解压目录>\share\python）
+   panda simulate --meanvc2-root ... --input ... --output ...   # 真实跑一次变声
+   launch.cmd                                                    # 界面能开
+   ```
+5. 打 tag（与版本号一致，如 `v1.0.0`）并推送。
+6. GitHub Release：建 tag 对应 Release，上传四资产，说明**简要**
+   （版本亮点 3–5 行 + 资产表 + 指向 CHANGELOG）。
+7. 归档状态检查：panda-engine 仓库保持 archived + 顶部指引。
+
+> 1.0.0 发布前验收已执行并全绿（2026-10-04）：四资产解压到 C 盘全新路径、
+> 环境变量全裸，`doctor` 零错误，真实模型 `simulate --fast` RTF 0.32、
+> 零下溢零丢帧，`launch.cmd` 拉起界面 23 秒无崩溃、正常退出。
+> 打包过程中 360 安全大脑对"批量哈希 + 复制 DLL"启发式报警为误报，
+> 产物已按 manifest 逐文件核对完整（缺 0）。
+
+### 12.6 打包机注意事项
+
+- windeployqt 良性警告（dxcompiler/dxil）会被 PowerShell 重定向放大：
+  转发 stderr 必须在 cmd 层做，见 12.5-3。
+- 5 万文件突发解压可能被终端防护拒写个别文件（实测 ucrtbase.dll ENOENT），
+  脚本已对运行时解压加重试；重放同条目必定成功说明是瞬时故障。
+- `windeployqt` 对刚复制的 exe 加锁时会重试 3 次（EDR 扫描）。
+- 打包取材全在本机（build 产物、`.tools` 的 conda/Qt、`deps\MeanVC2`），
+  不走 CI；大文件不进 git。
+- conda 环境自带 vcruntime140/msvcp140 全套，运行时**不需要**目标机装
+  VC++ redist。
+
+## 13. 决策记录
+
+| 决策 | 理由 |
 | --- | --- |
-| 白噪声 -60 dB | 29.1 dB |
-| 风扇轰鸣 -50 dB | 29.8 dB |
-| 风扇轰鸣 -40 dB | 0.0 dB |
-| 键盘敲击 -40 dB | 0.1 dB |
-| 别人说话 -40 dB | 1.0 dB |
-| 别人说话 -30 dB | 0.1 dB |
+| 音色包明文开放 | 可检查、可备份、可迁移、可被工具链处理、社区可贡献 |
+| MeanVC2 优先 | 低延迟流式、Apache-2.0、模型轻、CPU 可跑、官方训练代码公开 |
+| 公共模型与音色资源解耦 | 客户端、公共模型、音色包各自独立发布与版本化 |
+| 推理留在 Python 引擎进程 | RTF 0.757 零下溢已验证；ONNX 化被 DiT trace 卡死，收益只有打包体积 |
+| 引擎子进程 + stdout/stdin 协议 | 崩溃隔离、语言无关、指标可测试；Named Pipe/JSON-RPC 属未定，未实现 |
+| 默认 120ms 变体 | 每块耗时一半、缓冲小一个量级、恒等保持更好（见 6.1） |
+| v1 虚拟声卡依赖用户自装 | 内核驱动需管理员 + EV 签名，违背零门槛安装 |
+| 三应用包 + 工具包的四资产发布 | 单文件 2 GiB 上限；三包同目录解压即用；工具包不带环境 |
+| 单线程推理 | batch=1 小模型实测单线程最快（见 6.2） |
+| 版本号双来源 + 一致性测试 | 两语言生态解耦，但发版必须同值，由测试强制 |
 
-**电平门只能处理低于阈值的平稳噪声。** 只要环境声达到阈值以上就原样通过，
-而它无法靠音量区分"我的声音"和"别人的声音"。所以它适合安静房间，不能当作
-降噪使用。
+## 14. 路线图（均未排期，属"待定"）
 
-DeepFilterNet（设计文档里规划的降噪组件）实测：键盘敲击抑制 36.5 dB、每
-160 ms 块耗时 10.9 ms（RTF 0.068）。真实麦克风不能只在静音段测试，因为
-用户说话时环境噪声仍然存在。用 Windows TTS 的真实语音分别叠加风扇、键盘和
-白噪声，把混合信号设在 10 dB SNR 后测得：
+1. **打包瘦身**：清零引用训练杂物（wandb/sklearn/matplotlib/numba/librosa/
+   transformers）、砍 40ms 备选模型（省 ~300 MB）、核实 WavLM 1.24 GB 是否可
+   精简——不阻塞发布。
+2. **ONNX 化去 Python**：vocoder/ASR 已导出，卡在 DiT 流式路径的可 trace 重写。
+3. **帧级引擎**：只有"延迟要压到 150 ms 量级"成为优先级时才做。
+4. **代码签名**：管线已实现并测试（`-CertificateThumbprint`），只差证书。
+5. **自带签名虚拟声卡驱动**：EV 证书 + 管理员安装 + 内核驱动开发。
+6. GPU/CUDA 可选加速、RVC/DSP 后端、音高变换、Linux/macOS——均为设计预留，
+   未开始。
 
-| 环境声 | 语音段 SI-SDR 提升 | 停顿段噪声抑制 | 语音段电平变化 |
-| --- | --- | --- | --- |
-| 白噪声 | +2.1 dB | 32.1–39.7 dB | -1.2–-1.4 dB |
-| 风扇轰鸣 | +0.6–2.3 dB | 23.9–34.0 dB | -1.0–-2.0 dB |
-| 键盘敲击 | +2.1–2.6 dB | 33.5–33.9 dB | -1.1–-1.3 dB |
+## 15. 文档与提交规范
 
-也就是说，降噪处理的是整段麦克风信号：有人在说话时不会关闭，语音保留下来，
-环境噪声仍然被压低。它**不处理别人说话**（-0.3 dB）——它是降噪器不是说话人
-分离器，背景人声需要目标说话人提取，不在第一版范围内。
-
-集成障碍：DFN 的 Python API 是离线的，`enhance()` 每次调用都会重置模型的
-循环状态，逐块处理与整段处理在块边界差异可达 0.235。正确的流式集成需要调用
-它的内部状态，或者做重叠相加——后者要多加约一个窗口（160 ms）的延迟。这是
-一个关于延迟的取舍决策，不是即插即用。
-
-三种流式方案实测（相对整段处理的最大差异）：
-
-| 方案 | 最大差异 | 额外延迟 | CPU |
-| --- | --- | --- | --- |
-| 逐块直调 | 0.235 | 0 | 1× |
-| 保留循环状态 | 0.60 | 0 | 1× |
-| 重叠相加 | 0.0595 | 160 ms | 1.6× |
-
-"保留状态"更差，说明 DFN 的 STFT 状态在 Python 调用之间也不延续，它的 API
-就是整段处理的。重叠相加方案实现在 `panda_infer.denoise.Denoiser`，用
-`--denoise` 开启，**默认关闭**：它换来的是非语音噪声（键盘、风扇）的抑制，
-以及语音段信噪比提升，代价是 160 ms 延迟。降噪强度分三档：
-`strong`（完整抑制，默认）、`balanced`（最多抑制 12 dB）和 `gentle`
-（最多抑制 6 dB）；后两档保留更多环境声与语音细节，适合降噪痕迹过重的
-素材。10 dB SNR 真实语音实测：
-
-| 档位 | 停顿段风扇/键盘抑制 | 语音段 SI-SDR 提升 |
-| --- | --- | --- |
-| strong | 23.9 / 33.5 dB | +2.32 / +2.58 dB |
-| balanced | 11.3 / 12.3 dB | +2.11 / +2.73 dB |
-| gentle | 5.8 / 6.3 dB | +1.23 / +1.83 dB |
-
-注意交叉淡化必须在降噪器自己的采样率（48 kHz）上做，最后只降一次采样。
-把两个采样率都设成 48 kHz（即不触发重采样）时，组件与整段处理的差异正好是
-0.0595、延迟精确 160.00 ms，与独立探针一致；通过 16 kHz 管线测到的 0.161
-来自两条重采样链把略有差异的信号喂给非线性模型，不是交叉淡化本身。
-
-### 10.3 基准硬件
-
-CPU 基线：
-
-```text
-8 核 x86-64
-16 GB RAM
-支持 AVX2
-集成显卡
-```
-
-GPU 基线：
-
-```text
-8 核 x86-64
-16 GB RAM
-NVIDIA 12 GB 显存
-CUDA 12.x
-```
-
-性能报告必须写清楚：
-
-- CPU/GPU 型号
-- 采样率
-- 块大小
-- 后端
-- NFE
-- 是否启用降噪
-- 是否启用虚拟麦克风
-
-### 10.4 已实测数据
-
-开发机的 CPU 基准结果（MeanVC2 40ms，16 kHz，160 ms 块，无降噪，无虚拟麦克风）：
-
-```text
-CPU:        Intel Core Ultra 5 125H (14C/18T)
-样本:       480 个连续块 ≈ 76.8 秒音频
-RTF:        0.757 (整体)
-延迟:       mean 121 ms / p50 120 ms / p90 127 ms / p95 132 ms / p99 145 ms
-超时块:     2 / 480（>160 ms）
-长期漂移:   无（前四分之一 120.8 ms vs 后四分之一 121.8 ms）
-初始化:     ~6 秒（含 WavLM 说话人模型）
-```
-
-线程数结论（同一台机器，12 块取样）：
-
-| torch 线程数 | mean | RTF |
-| --- | --- | --- |
-| 1 | 115 ms | 0.721 |
-| 2 | 137 ms | 0.855 |
-| 4 | 123 ms | 0.770 |
-| 8 | 154 ms | 0.963 |
-| 16 | 150 ms | 0.936 |
-
-MeanVC2 是 batch=1 的小模型，单线程最快；多线程的调度和同步开销反而拖慢推理。
-官方运行时的 `torch.set_num_threads(1)` 是经过验证的默认值，不要盲目调大。
-
-因此 CPU 实时变声是本项目的默认路径，GPU 只是可选加速，不是前置条件。
-实测中约 0.4% 的块会超过 160 ms 预算，因此音频管线需要一个小的抖动缓冲来吸收抖动，
-而不是要求每一块都必须跑进预算。
-
-### 10.5 端到端管线仿真
-
-`panda simulate` 用 WAV 文件替代音频设备，跑完整的 worker + 抖动缓冲路径。
-开发机上 20 秒音频、40ms 模型、单线程的结果：
-
-```text
-块数:        125（无输入丢失）
-平均推理:    118.9 ms
-最大推理:    133.1 ms      （未预热时首块为 348 ms）
-下溢:        0 帧
-缓冲丢帧:    0
-预滚静音:    3 次读 / 7680 帧（约 0.48 s，属刻意引入的启动延迟）
-输出长度:    20.42 s（源 20.00 s）
-```
-
-关键结论：**推理必须预热**。预热前首块耗时 348 ms，会连续吃掉 5 块缓冲；
-预热 3 块静音后最大耗时降到 133 ms，下溢归零。预热结束后必须重置流式缓存，
-否则会丢掉音频开头。
-
-预滚深度是启动延迟和抗抖动能力的直接取舍，`--prefill-chunks` 暴露给用户：
-
-| 预滚 | 启动静音 | 最大推理耗时 | 下溢 | 输出长度 |
-| --- | --- | --- | --- | --- |
-| 1 块 | 2 次读 ≈ 0.32 s | 157.3 ms | 0 | 20.26 s |
-| 2 块 | 3 次读 ≈ 0.48 s | 133.1 ms | 0 | 20.42 s |
-
-`--max-backlog-chunks` 控制缓冲上限；超限时丢弃最旧音频，保证延迟不会无界增长。
-两个参数在 `panda realtime`、`panda simulate` 和 `panda` 启动器上都可以设置。
-
-## 11. 风险
-
-### 技术风险
-
-- 不同声卡驱动造成时钟漂移
-- 虚拟麦克风驱动安装失败
-- CPU 推理性能不足
-- 模型版本升级导致音色包不兼容
-
-### 许可风险
-
-- 上游模型许可证变化
-- 音色训练数据缺少授权
-- 用户导入的资源违反本地法律
-
-### 产品风险
-
-- 过度依赖单一后端
-- 音色包格式频繁变化
-- 不同 GPU 后端效果不一致
-
-## 12. 决策记录
-
-### 决策 1：统一使用开放明文音色包
-
-原因：
-
-- 格式公开
-- 便于检查
-- 便于迁移
-- 便于工具链处理
-
-### 决策 2：音色包明文开放
-
-原因：
-
-- 便于检查
-- 便于备份
-- 便于迁移
-- 便于社区贡献
-
-### 决策 3：MeanVC2 优先
-
-原因：
-
-- 低延迟
-- 轻量
-- 官方训练代码公开
-- 适合从零样本开始
-
-### 决策 4：公共模型与音色资源解耦
-
-客户端、公共模型和音色包分别发布。音色包可以独立导入、删除和版本化，不需要重新构建客户端。
-
-## 13. 代码规范
-
-- C++：C++20
-- Python：3.10+
-- 字符编码：UTF-8
-- 换行：LF
-- 配置：JSON / YAML
-- 哈希：SHA-256
-- 二进制模型：优先 safetensors / ONNX
-- 路径：包内只允许相对路径
-- 日志：结构化字段，避免输出隐私数据
-
-### 13.1 文档规则
-
-- 文档和代码在同一个提交中更新。
-- 命令示例必须可复制执行。
-- 配置示例必须标明路径基准。
-- 协议字段必须有版本和兼容规则。
-- 模型和音色包格式变更必须写迁移说明。
-- 未确定的产品决策必须标记为待定，不能写成已经支持。
-
-### 13.2 提交规范
-
-建议使用：
-
-```text
-feat: 新功能
-fix: 修复
-docs: 文档
-test: 测试
-refactor: 重构
-build: 构建
-chore: 杂项
-```
-
-## 14. 下一步
-
-1. 初始化 Git 仓库并确定正式项目名。
-2. 确定项目代码许可证。
-3. 建立 C++20/CMake 工程骨架。
-4. 建立最小 MeanVC2 CPU 推理原型。
-5. 验证 CPU 实时率和音色包加载。
-6. 建立 Qt/QML 空壳。
-7. 接入设备枚举和基本音频环回。
-8. 安装并加载第一个开放音色包。
-
+- 文档只有三份：`README.md`（产品）、`docs/DEVELOPMENT.md`（本文）、
+  `CHANGELOG.md`（更新日志）；界面改动必须更新截图。
+- 文档和代码在同一个提交中更新；命令示例必须可复制执行；
+  配置示例标明路径基准；协议字段必须有版本与兼容规则；
+  音色包格式变更必须写迁移说明；未确定的决策标"待定"，不写成已支持。
+- 提交类型：`feat:` `fix:` `docs:` `test:` `refactor:` `build:` `chore:`。
+- Definition of Done：有自动化测试、有错误处理与用户提示、有性能数据、
+  有日志与诊断、有文档更新、有回滚/降级路径、不引入未记录的运行时依赖。
