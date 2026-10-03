@@ -1,5 +1,12 @@
 # 熊猫变声器 (Panda Voice Changer)
 
+[![Qt](https://img.shields.io/badge/Qt-6.8.3-41CD52?logo=qt&logoColor=white)](https://www.qt.io/)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.5.1-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-1.30.0-005AED?logo=onnx&logoColor=white)](https://onnxruntime.ai/)
+[![platform](https://img.shields.io/badge/platform-Windows-0078D6)](https://www.microsoft.com/windows)
+[![license](https://img.shields.io/badge/license-Apache%202.0-4CAF50)](LICENSE)
+
 开源、免费、**本地优先**的实时变声器。麦克风的声音在本机实时换成目标音色——
 无账号、无云端、无水印，音频不出这台电脑。
 
