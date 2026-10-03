@@ -1,8 +1,23 @@
 cmake_minimum_required(VERSION 3.24)
 
+# The product version lives in exactly one file — core/include/panda/version.hpp
+# — and is parsed out of it here so nothing downstream keeps its own copy.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/core/include/panda/version.hpp"
+     panda_version_header)
+string(REGEX MATCH
+    "Version\\{[ \t\r\n]*([0-9]+),[ \t\r\n]*([0-9]+),[ \t\r\n]*([0-9]+)"
+    panda_version_match "${panda_version_header}")
+set(PANDA_VERSION_MAJOR "${CMAKE_MATCH_1}")
+set(PANDA_VERSION_MINOR "${CMAKE_MATCH_2}")
+set(PANDA_VERSION_PATCH "${CMAKE_MATCH_3}")
+if(NOT panda_version_match)
+    message(FATAL_ERROR
+        "Could not read the product version from core/include/panda/version.hpp")
+endif()
+
 project(
     Panda
-    VERSION 0.1.0
+    VERSION "${PANDA_VERSION_MAJOR}.${PANDA_VERSION_MINOR}.${PANDA_VERSION_PATCH}"
     DESCRIPTION "Open-source real-time voice changer"
     LANGUAGES CXX
 )

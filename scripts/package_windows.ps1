@@ -25,6 +25,17 @@ Set-StrictMode -Version Latest
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 
+# The product version lives in exactly one place:
+# core/include/panda/version.hpp. CMake parses it for project(VERSION) and this
+# script reads it for the package manifest, so a release only ever bumps one
+# file.
+$versionHeaderPath = Join-Path $repoRoot "core\include\panda\version.hpp"
+$versionHeader = Get-Content -LiteralPath $versionHeaderPath -Raw
+if ($versionHeader -notmatch 'Version\{\s*(\d+),\s*(\d+),\s*(\d+)') {
+    throw "Could not read the product version from '$versionHeaderPath'."
+}
+$pandaVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+
 if ([string]::IsNullOrWhiteSpace($EngineDirectory)) {
     $EngineDirectory = Join-Path $repoRoot "..\panda-engine"
 }
@@ -533,7 +544,7 @@ foreach ($item in Get-ChildItem -LiteralPath $outputPath -Recurse -File) {
 $packageInfo = [ordered]@{
     format = "panda.package"
     schema_version = 1
-    version = "0.1.0"
+    version = $pandaVersion
     created_at = (Get-Date).ToUniversalTime().ToString("o")
     files = @($packageFiles)
 }
