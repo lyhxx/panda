@@ -30,9 +30,9 @@ $env:PANDA_PYTHON = $python
 $env:PANDA_MEANVC2_ROOT = $meanvc2
 $env:PANDA_VOICES_ROOT = $voices
 
-# The engine is a separate repository; expose its source in case it is not
-# pip-installed into the Python environment.
-$engine = Join-Path $repoRoot "..\panda-engine\src"
+# The Python engine lives in this repository (python/src). PYTHONPATH is only
+# a fallback for when the packages are not pip-installed into the environment.
+$engine = Join-Path $repoRoot "python\src"
 if (Test-Path -LiteralPath $engine -PathType Container) {
     $env:PYTHONPATH = $engine + [IO.Path]::PathSeparator + $env:PYTHONPATH
 }

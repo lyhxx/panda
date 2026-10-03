@@ -12,8 +12,6 @@ param(
     [string]$CondaExecutable = "",
     [string]$MeanVC2Root = "",
     [string]$DeepFilterNetRoot = "",
-    # Where the audio engine source lives (the panda-engine repository).
-    [string]$EngineDirectory = "",
     [switch]$SkipTests,
     [switch]$NoZip,
     [string]$CertificateThumbprint = "",
@@ -36,12 +34,11 @@ if ($versionHeader -notmatch 'Version\{\s*(\d+),\s*(\d+),\s*(\d+)') {
 }
 $pandaVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
 
-if ([string]::IsNullOrWhiteSpace($EngineDirectory)) {
-    $EngineDirectory = Join-Path $repoRoot "..\panda-engine"
-}
-$engineRoot = [IO.Path]::GetFullPath($EngineDirectory)
+# The Python engine lives inside this repository (python/src), so packaging no
+# longer reaches out to a sibling checkout.
+$engineRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot "python"))
 if (-not (Test-Path -LiteralPath (Join-Path $engineRoot "src\panda_infer") -PathType Container)) {
-    throw "Engine source was not found under '$engineRoot'. Pass -EngineDirectory <panda-engine path>."
+    throw "Engine source was not found under '$engineRoot'."
 }
 
 function Get-Sha256Hex([string]$Path) {
@@ -347,10 +344,23 @@ if ($BundlePython) {
     }
 
     $pythonDirectory = Join-Path $outputPath "python"
-    New-Item -ItemType Directory -Path $pythonDirectory | Out-Null
-    tar.exe -xf $runtimeArchive -C $pythonDirectory
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to extract the Python runtime"
+    New-Item -ItemType Directory -Path $pythonDirectory -Force | Out-Null
+    # Extracting ~50k files in a burst can trip endpoint protection: individual
+    # writes fail with "No such file or directory" even though the directory
+    # tree is present (observed on ucrtbase.dll; the same entries extract
+    # cleanly on retry). Retry like windeployqt instead of failing the run.
+    $extractAttempts = 0
+    while ($true) {
+        tar.exe -xf $runtimeArchive -C $pythonDirectory
+        if ($LASTEXITCODE -eq 0) {
+            break
+        }
+        $extractAttempts += 1
+        if ($extractAttempts -ge 3) {
+            throw "Failed to extract the Python runtime after $extractAttempts attempts"
+        }
+        Write-Warning "Runtime extraction failed; retrying ($extractAttempts/3)"
+        Start-Sleep -Seconds 2
     }
     Remove-Item -LiteralPath $runtimeArchive -Force
 
@@ -567,21 +577,142 @@ if (Test-Path -LiteralPath $backupPath) {
 $outputPath = $finalOutputPath
 
 if (-not $NoZip) {
-    $zipPath = "$outputPath.zip"
-    if (Test-Path -LiteralPath $zipPath) {
-        Remove-Item -LiteralPath $zipPath -Force
+    # The release ships as three assembly parts plus a standalone pack tool:
+    #   1) Panda-<version>.zip  program: exe, Qt, engine source, documents
+    #   2) Panda-runtime.zip    bundled python/ + DeepFilterNet/
+    #   3) Panda-Models.zip     bundled MeanVC2/ models
+    #   4) Panda-Pack.zip       voice-pack exporter (no environment)
+    # Parts 1-3 extract into the same folder: launch.cmd then finds python/,
+    # MeanVC2/ and DeepFilterNet/ next to the executable. GitHub limits a
+    # single release asset to 2 GiB, so every archive is checked after it is
+    # written instead of after an upload is rejected.
+    $releaseDirectory = Join-Path (Split-Path -Parent $outputPath) "release"
+    if (Test-Path -LiteralPath $releaseDirectory) {
+        Remove-Item -LiteralPath $releaseDirectory -Recurse -Force
     }
-    if ($BundlePython -or $BundleMeanVC2) {
-        tar.exe -a -c -f $zipPath -C $outputPath .
+    New-Item -ItemType Directory -Path $releaseDirectory | Out-Null
+    $archives = @()
+
+    # Legacy single-file package from before the split.
+    $legacyZip = "$outputPath.zip"
+    if (Test-Path -LiteralPath $legacyZip) {
+        Remove-Item -LiteralPath $legacyZip -Force
+    }
+
+    # 1) Program. Staged through robocopy so the bundled runtime, the models
+    #    and voices/ stay out: voices holds the user's private packs and must
+    #    never end up in a public asset.
+    $mainZip = Join-Path $releaseDirectory "Panda-$pandaVersion.zip"
+    $programStaging = Join-Path $releaseDirectory "program-staging"
+    New-Item -ItemType Directory -Path $programStaging | Out-Null
+    # /XD matches a bare name at ANY depth, so excluding "python" would also
+    # drop share\python -- the engine source the packaged app runs from.
+    # Match by absolute path so only the top-level bundled directories are
+    # left out of the program asset.
+    $bundledRoot = [IO.Path]::GetFullPath($outputPath)
+    $robocopyArgs = @(
+        $outputPath, $programStaging, "/E", "/R:1", "/W:1",
+        "/XD",
+        (Join-Path $bundledRoot "python"),
+        (Join-Path $bundledRoot "MeanVC2"),
+        (Join-Path $bundledRoot "DeepFilterNet"),
+        (Join-Path $bundledRoot "voices"),
+        "/NFL", "/NDL", "/NJH", "/NJS", "/NP"
+    )
+    robocopy @robocopyArgs | Out-Null
+    if ($LASTEXITCODE -ge 8) {
+        throw "robocopy failed while staging the program package ($LASTEXITCODE)"
+    }
+    tar.exe -a -c -f $mainZip -C $programStaging .
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to archive the program package"
+    }
+    Remove-Item -LiteralPath $programStaging -Recurse -Force
+    $archives += $mainZip
+
+    # 2) Python runtime and 3) models, streamed straight from the package tree.
+    if ($BundlePython) {
+        $runtimeZip = Join-Path $releaseDirectory "Panda-runtime.zip"
+        tar.exe -a -c -f $runtimeZip -C $outputPath python DeepFilterNet
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to archive the Windows package"
+            throw "Failed to archive the Python runtime package"
         }
+        $archives += $runtimeZip
     }
-    else {
-        Compress-Archive `
-            -Path (Join-Path $outputPath "*") `
-            -DestinationPath $zipPath
+    if ($BundleMeanVC2) {
+        $modelsZip = Join-Path $releaseDirectory "Panda-Models.zip"
+        tar.exe -a -c -f $modelsZip -C $outputPath MeanVC2
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to archive the model package"
+        }
+        $archives += $modelsZip
+    }
+
+    # 4) Standalone voice-pack exporter: source plus a usage note only -- it
+    #    deliberately ships without an environment, so whoever builds packs
+    #    supplies Python and the MeanVC2 checkout themselves.
+    $packReadme = @"
+Panda voice-pack exporter
+=========================
+
+Turns audio files (WAV / MP3 / FLAC / OGG ...) into a .zip voice pack for
+Panda Voice Changer.
+
+Requirements (not bundled):
+  * Python 3.10+
+      pip install numpy soundfile scipy pillow
+  * The official MeanVC2 checkout for speaker-embedding extraction
+    (pass its path with --meanvc2-root)
+
+Run from this folder:
+
+      python -m panda_pack --help
+
+Example:
+
+      python -m panda_pack --name "My Voice" --id my-voice --audio voice.wav ^
+          --meanvc2-root C:\path\MeanVC2 --python python --device cpu ^
+          --output out --overwrite
+"@
+    $packZip = Join-Path $releaseDirectory "Panda-Pack.zip"
+    $packStaging = Join-Path $releaseDirectory "pack-staging"
+    $packRoot = Join-Path $packStaging "Panda-Pack"
+    New-Item -ItemType Directory -Path $packRoot -Force | Out-Null
+    Copy-Item -Recurse -Force `
+        -LiteralPath (Join-Path $engineRoot "src\panda_pack") `
+        -Destination (Join-Path $packRoot "panda_pack")
+    Copy-Item -Force `
+        -LiteralPath (Join-Path $engineRoot "src\panda_version.py") `
+        -Destination (Join-Path $packRoot "panda_version.py")
+    Get-ChildItem -LiteralPath $packRoot -Recurse -Directory -Filter "__pycache__" |
+        Remove-Item -Recurse -Force
+    Set-Content `
+        -LiteralPath (Join-Path $packRoot "README.txt") `
+        -Value $packReadme `
+        -Encoding Utf8
+    tar.exe -a -c -f $packZip -C $packStaging Panda-Pack
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to archive the pack tool package"
+    }
+    Remove-Item -LiteralPath $packStaging -Recurse -Force
+    $archives += $packZip
+
+    $gitHubAssetLimit = 2L * 1024 * 1024 * 1024
+    foreach ($archive in $archives) {
+        $size = (Get-Item -LiteralPath $archive).Length
+        if ($size -gt $gitHubAssetLimit) {
+            throw (
+                "'$(Split-Path $archive -Leaf)' is " +
+                "$([math]::Round($size / 1GB, 2)) GB, over the 2 GiB " +
+                "GitHub release asset limit. Split the package further."
+            )
+        }
+        Write-Host ("  {0,-26} {1,7:N2} GB" -f `
+            (Split-Path $archive -Leaf), ($size / 1GB))
     }
 }
 
 Write-Host "Packaged Panda at $outputPath"
+if (-not $NoZip) {
+    Write-Host "Release assets at $releaseDirectory"
+}

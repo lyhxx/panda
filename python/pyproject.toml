@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "panda-pack"
+# The version is not written here: it lives in src/panda_version.py and is
+# read through the dynamic section below, so a release edits one file.
+dynamic = ["version"]
+description = "Voice-pack and inference tools for the Panda voice changer."
+requires-python = ">=3.10"
+authors = [{ name = "Panda contributors" }]
+dependencies = []
+
+[project.scripts]
+panda = "panda_cli.cli:main"
+panda-pack = "panda_pack.cli:main"
+panda-infer = "panda_infer.cli:main"
+panda-rt = "panda_infer.realtime_cli:main"
+
+[tool.setuptools]
+# src layout: the version module and the three packages all live under src/.
+package-dir = { "" = "src" }
+py-modules = ["panda_version"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = { attr = "panda_version.__version__" }
