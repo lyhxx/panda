@@ -85,6 +85,17 @@ public:
     // to re-home a selection whose folder vanished from disk, so it must
     // ignore the search filter.
     [[nodiscard]] Q_INVOKABLE QString firstFolder() const;
+    // Summarise a multi-selection install. One installPack call only reports on
+    // its own archive, so after a batch the last result would hide everything
+    // else; failure keeps the code of the first failure so the banner still
+    // carries the real reason.
+    Q_INVOKABLE void reportBatch(
+        int installed,
+        int failed,
+        int skipped,
+        int failureCode,
+        const QString& failureText
+    );
 
 signals:
     void countChanged();

@@ -239,6 +239,35 @@ QString PackListModel::firstFolder() const {
     return QString::fromStdWString(all_entries_.front().path.wstring());
 }
 
+void PackListModel::reportBatch(
+    int installed,
+    int failed,
+    int skipped,
+    int failureCode,
+    const QString& failureText
+) {
+    if (failed > 0) {
+        set_message(QString());
+        set_error(
+            static_cast<panda::ErrorCode>(failureCode),
+            tr("安装完成：%1 个成功，%2 个未覆盖，%3 个失败（%4）")
+                .arg(installed)
+                .arg(skipped)
+                .arg(failed)
+                .arg(failureText)
+        );
+        return;
+    }
+    set_error(panda::ErrorCode::none, QString());
+    if (skipped > 0) {
+        set_message(
+            tr("已安装 %1 个，%2 个未覆盖").arg(installed).arg(skipped)
+        );
+        return;
+    }
+    set_message(tr("已安装 %1 个音色包").arg(installed));
+}
+
 void PackListModel::refresh() {
     std::vector<panda::modelstore::Manifest> manifests;
     const auto status = panda::modelstore::scan_voice_packs(
@@ -374,6 +403,9 @@ bool PackListModel::installPack(const QString& archivePath, bool overwrite) {
 
     const auto name = from_utf8(result.manifest.name);
     refresh();
+    // A success retires the banner left by whatever failed before it, so at
+    // most one of the two is ever shown and each knows its own age.
+    set_error(panda::ErrorCode::none, QString());
     set_message(tr("已安装：%1").arg(name));
     return true;
 }
@@ -395,6 +427,7 @@ bool PackListModel::removePack(const QString& packId) {
     }
 
     refresh();
+    set_error(panda::ErrorCode::none, QString());
     set_message(tr("已删除：%1").arg(packId));
     return true;
 }

@@ -8,17 +8,88 @@ Item {
     id: page
 
     property string pendingArchive: ""
+    property string pendingArchiveName: ""
     property string pendingPackId: ""
     property string pendingPackName: ""
 
-    function installArchive(fileUrl) {
-        const path = decodeURIComponent(String(fileUrl).replace(/^file:\/\/\//, ""))
-        page.pendingArchive = path
-        packListModel.clearMessages()
-        if (!packListModel.installPack(path, false)
-                && packListModel.lastErrorIsAlreadyInstalled) {
-            overwriteDialog.open()
+    // A multi-selection installs one archive at a time so an "already
+    // installed" hit can pause the run for a confirmation and resume after it.
+    property var queue: []
+    property int queueIndex: 0
+    property int queueInstalled: 0
+    property int queueFailed: 0
+    property int queueSkipped: 0
+    property int queueFailCode: 0
+    property string queueFailText: ""
+    property string overwriteResult: ""
+
+    function archivePath(fileUrl) {
+        return decodeURIComponent(String(fileUrl).replace(/^file:\/\/\//, ""))
+    }
+
+    function rememberFirstFailure() {
+        if (queueFailText.length === 0) {
+            queueFailText = packListModel.lastError
+            queueFailCode = packListModel.lastErrorCode
         }
+    }
+
+    function startInstallQueue(fileUrls) {
+        queue = []
+        for (let i = 0; i < fileUrls.length; ++i) {
+            queue.push(archivePath(fileUrls[i]))
+        }
+        queueIndex = 0
+        queueInstalled = 0
+        queueFailed = 0
+        queueSkipped = 0
+        queueFailText = ""
+        queueFailCode = 0
+        packListModel.clearMessages()
+        Qt.callLater(stepInstallQueue)
+    }
+
+    function stepInstallQueue() {
+        if (queueIndex >= queue.length) {
+            // A single archive keeps installPack's own message, which names
+            // the pack; only a real batch needs counting.
+            if (queue.length > 1) {
+                packListModel.reportBatch(queueInstalled, queueFailed,
+                                          queueSkipped, queueFailCode,
+                                          queueFailText)
+            }
+            return
+        }
+        const path = queue[queueIndex]
+        if (packListModel.installPack(path, false)) {
+            queueInstalled += 1
+        } else if (packListModel.lastErrorIsAlreadyInstalled) {
+            pendingArchive = path
+            pendingArchiveName = path.split(/[\\/]/).pop()
+            overwriteResult = ""
+            overwriteDialog.open()
+            return  // resumed by overwriteDialog.onClosed
+        } else {
+            queueFailed += 1
+            rememberFirstFailure()
+        }
+        queueIndex += 1
+        Qt.callLater(stepInstallQueue)
+    }
+
+    // Resumed from overwriteDialog.onClosed for every way that dialog can
+    // end, including Escape, which fires neither confirmed nor canceled.
+    function resumeAfterOverwrite(cover) {
+        if (cover && packListModel.installPack(pendingArchive, true)) {
+            queueInstalled += 1
+        } else if (!cover) {
+            queueSkipped += 1
+        } else {
+            queueFailed += 1
+            rememberFirstFailure()
+        }
+        queueIndex += 1
+        Qt.callLater(stepInstallQueue)
     }
 
     ColumnLayout {
@@ -208,19 +279,71 @@ Item {
     FileDialog {
         id: installDialog
         title: qsTr("选择音色包")
+        // Qt 6 spells multi-select as a file mode, not the Qt 5 flag.
+        fileMode: FileDialog.OpenFiles
         nameFilters: [
             qsTr("Panda 音色包 (*.zip)"),
             qsTr("所有文件 (*)")
         ]
-        onAccepted: page.installArchive(selectedFile)
+        onAccepted: page.startInstallQueue(selectedFiles)
+    }
+
+    // ---- Auto-dismissing banners -----------------------------------------
+    // The green line is gone after a few seconds; a failure stays up longer
+    // so its reason can actually be read.
+    Timer {
+        id: messageTimer
+        interval: 4000
+        onTriggered: packListModel.clearMessages()
+    }
+
+    Timer {
+        id: errorTimer
+        interval: 8000
+        onTriggered: packListModel.clearMessages()
+    }
+
+    Connections {
+        target: packListModel
+
+        function onLastMessageChanged() {
+            if (packListModel.lastMessage.length > 0) {
+                messageTimer.restart()
+            }
+        }
+        function onLastErrorChanged() {
+            if (packListModel.lastError.length > 0) {
+                errorTimer.restart()
+            }
+        }
+    }
+
+    Component.onCompleted: {
+        // Timers die with the page; coming back to a banner that survived a
+        // route change has to start its countdown again.
+        if (packListModel.lastMessage.length > 0) {
+            messageTimer.restart()
+        }
+        if (packListModel.lastError.length > 0) {
+            errorTimer.restart()
+        }
     }
 
     AppConfirmDialog {
         id: overwriteDialog
         title: qsTr("覆盖安装")
-        message: qsTr("已经安装过同 ID 的音色包，是否覆盖？")
+        message: qsTr("「%1」已经安装过同 ID 的音色包，是否覆盖？")
+                     .arg(page.pendingArchiveName)
         confirmText: qsTr("覆盖")
-        onConfirmed: packListModel.installPack(page.pendingArchive, true)
+        // The buttons only mark the answer; the queue advances here, once,
+        // because closing with Escape or the backdrop fires no other signal.
+        onConfirmed: page.overwriteResult = "yes"
+        onCanceled: page.overwriteResult = "no"
+        onClosed: {
+            const answer = page.overwriteResult
+            page.overwriteResult = ""
+            page.resumeAfterOverwrite(answer === "yes")
+        }
     }
 
     AppConfirmDialog {

@@ -125,6 +125,7 @@ private slots:
     void removing_an_unknown_pack_reports_not_found();
     void removing_an_unsafe_id_is_rejected();
     void clearing_messages_resets_state();
+    void report_batch_summarises_a_multi_selection();
     void refresh_lists_an_installed_pack();
     void removing_an_installed_pack_succeeds();
     void filters_by_id_and_name();
@@ -206,6 +207,40 @@ void PackListModelTest::clearing_messages_resets_state() {
     QCOMPARE(
         model.lastErrorCode(),
         static_cast<int>(PackListModel::NoError)
+    );
+}
+
+void PackListModelTest::report_batch_summarises_a_multi_selection() {
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    PackListModel model;
+    model.setVoicesRoot(temp.path());
+
+    // Everything landed.
+    model.reportBatch(3, 0, 0, 0, {});
+    QVERIFY(model.lastMessage().contains(QStringLiteral("3")));
+    QVERIFY(model.lastError().isEmpty());
+
+    // An overwrite the user declined is counted next to the successes.
+    model.reportBatch(2, 0, 1, 0, {});
+    QVERIFY(model.lastMessage().contains(QStringLiteral("1")));
+    QVERIFY(model.lastError().isEmpty());
+
+    // A failure takes the banner over and keeps the first failure's code, so
+    // the reason behind the red line is still the real one.
+    model.reportBatch(
+        2,
+        1,
+        0,
+        static_cast<int>(panda::ErrorCode::checksum_mismatch),
+        QStringLiteral("bad zip")
+    );
+    QVERIFY(model.lastMessage().isEmpty());
+    QVERIFY(model.lastError().contains(QStringLiteral("bad zip")));
+    QCOMPARE(
+        model.lastErrorCode(),
+        static_cast<int>(panda::ErrorCode::checksum_mismatch)
     );
 }
 
