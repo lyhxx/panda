@@ -301,6 +301,23 @@ Popup {
                             clipped: realtimeController.outputClipped
                         }
 
+                        Text {
+                            // Picking the cable is only half the job: the
+                            // converted audio now goes to a line that another
+                            // application has to read, and that application
+                            // stays silent until the conversion runs. The one
+                            // step that happens outside this app is named
+                            // here, because nothing else on screen would ever
+                            // mention it.
+                            visible: dialog.deviceIsVirtual
+                            text: qsTr("用法：点「开启变声」→ 对方软件的麦克风选 CABLE Output。")
+                            color: Theme.textTertiary
+                            font.pixelSize: Theme.fontSmall
+                            font.family: Theme.fontFamily
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: Theme.space3
