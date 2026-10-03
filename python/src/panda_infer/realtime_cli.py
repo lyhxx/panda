@@ -114,20 +114,35 @@ DEVICE_QUERY_SCRIPT = (
 )
 
 
+DEVICE_QUERY_TIMEOUT = 30.0
+
+
 def query_devices(python_executable: str) -> dict:
     """Probe sounddevice in the target interpreter and enrich the payload."""
     environment = os.environ.copy()
     environment["PYTHONIOENCODING"] = "utf-8"
     executable = str(Path(python_executable).expanduser().resolve())
-    completed = subprocess.run(
-        [executable, "-c", DEVICE_QUERY_SCRIPT],
-        check=False,
-        env=environment,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        completed = subprocess.run(
+            [executable, "-c", DEVICE_QUERY_SCRIPT],
+            check=False,
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=DEVICE_QUERY_TIMEOUT,
+        )
+    except OSError as exception:
+        # A missing or non-executable --python must not escape as a raw
+        # traceback; every other command reports "error: ..." and exits 2.
+        raise RuntimeError(f"无法运行 {executable}：{exception}") from exception
+    except subprocess.TimeoutExpired as exception:
+        # An interpreter wedged in driver enumeration would otherwise hang
+        # the whole command with no output at all.
+        raise RuntimeError(
+            f"设备查询超时（{DEVICE_QUERY_TIMEOUT:.0f} 秒）"
+        ) from exception
     if completed.returncode != 0:
         detail = completed.stderr.strip() or f"退出码 {completed.returncode}"
         raise RuntimeError(f"设备查询失败：{detail}")
@@ -147,20 +162,31 @@ def print_devices(python_executable: str, *, as_json: bool = False) -> int:
         environment = os.environ.copy()
         environment["PYTHONIOENCODING"] = "utf-8"
         executable = str(Path(python_executable).expanduser().resolve())
-        completed = subprocess.run(
-            [
-                executable,
-                "-c",
-                "import sounddevice as sd; print(sd.query_devices())",
-            ],
-            check=False,
-            env=environment,
-        )
+        try:
+            completed = subprocess.run(
+                [
+                    executable,
+                    "-c",
+                    "import sounddevice as sd; print(sd.query_devices())",
+                ],
+                check=False,
+                env=environment,
+                timeout=DEVICE_QUERY_TIMEOUT,
+            )
+        except OSError as exception:
+            print(f"error: 无法运行 {executable}：{exception}", file=sys.stderr)
+            return 2
+        except subprocess.TimeoutExpired:
+            print(
+                f"error: 设备查询超时（{DEVICE_QUERY_TIMEOUT:.0f} 秒）",
+                file=sys.stderr,
+            )
+            return 2
         return completed.returncode
 
     try:
         payload = query_devices(python_executable)
-    except RuntimeError as exception:
+    except (RuntimeError, OSError) as exception:
         print(f"error: {exception}", file=sys.stderr)
         return 2
 

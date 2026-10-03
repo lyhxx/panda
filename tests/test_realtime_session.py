@@ -636,5 +636,20 @@ class SimulateParserTest(unittest.TestCase):
         self.assertEqual(args.max_backlog_chunks, 4)
 
 
+class SimulationCopierTest(unittest.TestCase):
+    def test_simulation_feeds_the_session_the_shared_copier(self) -> None:
+        # realtime_sim used to define its own copy_input on top of
+        # np.ascontiguousarray, which returns the input untouched when it
+        # already is contiguous float32 (which load_wav_16k_mono guarantees) --
+        # aliasing the caller's buffer and breaking the copy contract
+        # submit_input documents. It now reuses the tested worker copier;
+        # CopyCapturedTest pins that copier's semantics.
+        from panda_infer import realtime_sim, realtime_worker
+
+        self.assertIs(
+            realtime_sim.copy_captured, realtime_worker.copy_captured
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

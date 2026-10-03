@@ -4,6 +4,7 @@ import io
 import json
 import shutil
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ from panda_infer.realtime_worker import (
     open_metrics_file,
     run_realtime_session,
     stream_latency_ms,
+    wait_for_reopen,
     warm_up_runner,
 )
 
@@ -167,6 +169,78 @@ class LiveControlsTest(unittest.TestCase):
         # A snapshot is a copy, so later updates do not mutate it.
         controls.update({"output_gain_db": 2.0})
         self.assertEqual(snapshot["output_gain_db"], -3.0)
+
+    def test_reopen_keys_bump_the_revision(self) -> None:
+        controls = LiveControls()
+        changed = {
+            "input_device": 1,
+            "output_device": 2,
+            "monitor_device": 3,
+            "input_device_name": "mic",
+            "output_device_name": "cable",
+            "monitor_device_name": "loopback",
+            "voice_pack": "/packs/demo",
+            "denoise": True,
+            "denoise_level": "gentle",
+            "prefill_chunks": 4,
+            "max_backlog_chunks": 8,
+        }
+        for key, value in changed.items():
+            before = controls.revision
+            controls.update({key: value})
+            self.assertEqual(controls.revision, before + 1, key)
+
+    def test_flush_does_not_bump_the_revision(self) -> None:
+        # flush is a stop request, not a reopen: bumping the revision here
+        # would make the desktop's stop reopen a device that just failed to
+        # open once more. The reopen wait checks flush separately instead.
+        controls = LiveControls()
+        before = controls.revision
+
+        controls.update({"flush": True})
+
+        self.assertEqual(controls.revision, before)
+        self.assertTrue(controls.snapshot()["flush"])
+
+
+class WaitForReopenTest(unittest.TestCase):
+    @staticmethod
+    def start_wait(controls: LiveControls, revision: int) -> tuple:
+        outcome: dict = {}
+
+        def waiter() -> None:
+            outcome["stop"] = wait_for_reopen(
+                controls, revision, poll_seconds=0.001
+            )
+
+        thread = threading.Thread(target=waiter)
+        thread.start()
+        return thread, outcome
+
+    def test_stop_control_wakes_the_wait(self) -> None:
+        # The regression this pins: stop only sends flush, so before flush
+        # was checked in the wait, a stop during a failed device open left
+        # the worker spinning until the desktop killed it after 3 s.
+        controls = LiveControls()
+        thread, outcome = self.start_wait(controls, controls.revision)
+        time.sleep(0.02)
+
+        controls.update({"flush": True})
+        thread.join(timeout=2.0)
+
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(outcome["stop"])
+
+    def test_reopen_change_wakes_the_wait_without_stopping(self) -> None:
+        controls = LiveControls()
+        thread, outcome = self.start_wait(controls, controls.revision)
+        time.sleep(0.02)
+
+        controls.update({"input_device": 5})
+        thread.join(timeout=2.0)
+
+        self.assertFalse(thread.is_alive())
+        self.assertFalse(outcome["stop"])
 
 
 class WarmUpRunnerTest(unittest.TestCase):

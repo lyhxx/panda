@@ -36,9 +36,13 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
         import numpy as np
         import sounddevice as sd
         import soundfile as sf
-        from scipy.signal import resample_poly
-    except ImportError as exception:
-        print(f"error: 试听需要 numpy、soundfile、sounddevice 和 scipy", file=sys.stderr)
+    except ImportError:
+        # No scipy: dsp.py documents that scipy.signal's DLL load hangs in
+        # some launch environments, so the project resampler is used below.
+        print(
+            "error: 试听需要 numpy、soundfile 和 sounddevice",
+            file=sys.stderr,
+        )
         return 2
 
     try:
@@ -61,14 +65,14 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
             raise RuntimeError(f"设备不是输出设备：{device_info.get('name', output_device)}")
         device_rate = int(round(float(device_info["default_samplerate"])))
         if sample_rate != device_rate:
-            from math import gcd
+            from panda_infer.dsp import StreamResampler
 
-            divisor = gcd(int(sample_rate), device_rate)
-            mono = resample_poly(
-                mono,
-                device_rate // divisor,
-                int(sample_rate) // divisor,
-            ).astype(np.float32)
+            # Reference rate -> device rate, through the same resampler the
+            # realtime pipeline uses (FIR for integer ratios, interpolation
+            # otherwise); scipy is deliberately avoided, see dsp.py.
+            mono = StreamResampler(
+                device_rate, engine_rate=int(sample_rate)
+            ).from_engine(mono)
         sd.play(mono, samplerate=device_rate, device=output_device, blocking=True)
         return 0
     except Exception as exception:

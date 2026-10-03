@@ -113,6 +113,67 @@ class ExportVoicePackTest(unittest.TestCase):
             self.assertEqual(info.channels, 1)
 
 
+    def test_zip_path_follows_a_dotted_output_directory(self) -> None:
+        # with_suffix replaces the LAST extension: --output voice.v2 would
+        # have zipped to voice.zip, shared by every dotted output name.
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            wav_path = root / "take.wav"
+            feature_path = root / "spk_emb.npy"
+            output = root / "voice.v2"
+            self.make_wav(wav_path)
+            feature_path.write_bytes(b"\x93NUMPYtest-feature")
+
+            code = main(
+                [
+                    "--name",
+                    "版本测试",
+                    "--id",
+                    "voice-test",
+                    "--audio",
+                    str(wav_path),
+                    "--feature-file",
+                    str(feature_path),
+                    "--output",
+                    str(output),
+                    "--overwrite",
+                ]
+            )
+
+            self.assertEqual(code, 0)
+            self.assertTrue(Path(str(output) + ".zip").is_file())
+            self.assertFalse((root / "voice.zip").exists())
+
+    def test_stale_zip_blocks_a_rebuild_without_overwrite(self) -> None:
+        # A zip can outlive a directory deleted by hand; it must be guarded
+        # like the directory or the rebuild silently clobbers it.
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            wav_path = root / "take.wav"
+            feature_path = root / "spk_emb.npy"
+            output = root / "voice.v2"
+            self.make_wav(wav_path)
+            feature_path.write_bytes(b"\x93NUMPYtest-feature")
+            arguments = [
+                "--name",
+                "版本测试",
+                "--id",
+                "voice-test",
+                "--audio",
+                str(wav_path),
+                "--feature-file",
+                str(feature_path),
+                "--output",
+                str(output),
+            ]
+            self.assertEqual(main(arguments), 0)
+            shutil.rmtree(output)
+
+            with self.assertRaises(FileExistsError):
+                main(arguments)
+
+            self.assertTrue(Path(str(output) + ".zip").is_file())
+
     def test_failed_overwrite_keeps_previous_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)

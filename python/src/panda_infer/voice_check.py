@@ -115,6 +115,31 @@ def verify_conversion(
     return report
 
 
+# A source->source round trip through the pipeline (the control group) says
+# whether conversion preserves speaker identity at all. On the development
+# host it measures +0.73 (DEVELOPMENT 3.4); far below that the pipeline has
+# lost the speaker, and "closer to the target" can then pass on noise from a
+# conversion that destroyed everyone equally.
+CONTROL_FLOOR = 0.4
+
+
+def evaluate_report(report: dict) -> tuple[bool, str]:
+    """Decide whether a verification report passes, and say why not.
+
+    Kept separate from verify_conversion so the pass/fail gate itself is a
+    pure function that tests can pin: this command is the project's only
+    objective check that the voice change swapped the speaker.
+    """
+    if report["control_converted_vs_source"] < CONTROL_FLOOR:
+        return (
+            False,
+            "对照组（源→自身）相似度过低，转换流水线本身已失真",
+        )
+    if not report["moved_toward_target"]:
+        return False, "转换没有把说话人推向目标"
+    return True, "说话人身份向目标移动"
+
+
 def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog,
@@ -147,8 +172,14 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
         print(f"error: {exception}", file=sys.stderr)
         return 2
 
+    ok, reason = evaluate_report(report)
+
     if args.json:
-        print(json.dumps(report, ensure_ascii=False, indent=2))
+        payload = dict(report)
+        payload["ok"] = ok
+        if not ok:
+            payload["fail_reason"] = reason
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(
             "对照（源→自身）：转换后 vs 源 "
@@ -158,11 +189,11 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
         print(f"转换后 vs 目标  {report['converted_vs_target']:+.4f}")
         print(f"转换后 vs 源    {report['converted_vs_source']:+.4f}")
 
-    if not report["moved_toward_target"]:
-        print("FAIL: 转换没有把说话人推向目标", file=sys.stderr)
+    if not ok:
+        print(f"FAIL: {reason}", file=sys.stderr)
         return 1
     if not args.json:
-        print("OK: 说话人身份向目标移动")
+        print(f"OK: {reason}")
     return 0
 
 

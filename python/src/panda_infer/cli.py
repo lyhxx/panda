@@ -32,9 +32,18 @@ def resolve_reference_from_pack(pack_path: Path) -> Path:
         raise FileNotFoundError(
             "音色包没有 reference/*.wav，请使用 --target-wav 指定目标音频"
         )
-    if not references[0].is_file():
-        raise FileNotFoundError(f"参考音频不存在：{references[0]}")
-    return references[0]
+    # collect_files sorts lexicographically, and "reference-2.wav" sorts
+    # before "reference.wav" ('-' < '.'), so the first manifest entry is NOT
+    # the primary take once a pack has several references. The pack names the
+    # primary take reference.wav (and the desktop reads exactly that path),
+    # so prefer it explicitly; every consumer of this function -- infer,
+    # realtime, simulate, preview, doctor, benchmark -- must hear the same
+    # take the library previews.
+    canonical = (pack / "reference" / "reference.wav").resolve()
+    chosen = canonical if canonical in references else references[0]
+    if not chosen.is_file():
+        raise FileNotFoundError(f"参考音频不存在：{chosen}")
+    return chosen
 
 
 def build_runtime_command(args: argparse.Namespace) -> list[str]:

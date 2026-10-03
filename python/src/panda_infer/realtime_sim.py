@@ -20,6 +20,7 @@ from panda_infer.cli import resolve_reference_from_pack
 from panda_infer.realtime_session import ConversionSession, drive_offline
 from panda_infer.realtime_worker import (
     WARMUP_CHUNKS,
+    copy_captured,
     load_meanvc2_runtime,
     warm_up_runner,
 )
@@ -152,15 +153,16 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
         chunk_size = int(runner.CHUNK)
         warm_up_runner(runner, args.warmup_chunks)
 
-        def copy_input(samples):
-            return np.ascontiguousarray(samples, dtype=np.float32)
-
+        # Same contract as the live capture path: submit_input promises a
+        # copy, and ascontiguousarray returns the input untouched when it
+        # already is contiguous float32 (which load_wav_16k_mono guarantees),
+        # so the queued block would alias the caller's buffer.
         session = ConversionSession(
             runner.process_chunk,
             chunk_size,
             prefill_chunks=args.prefill_chunks,
             max_backlog_chunks=args.max_backlog_chunks,
-            copy_input=copy_input,
+            copy_input=copy_captured,
         )
 
         started = time.perf_counter()

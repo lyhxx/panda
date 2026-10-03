@@ -59,7 +59,7 @@ def wav_metadata(path: Path) -> dict[str, object]:
 
 def ensure_output_available(path: Path, overwrite: bool) -> None:
     if path.exists() and not overwrite:
-        raise FileExistsError(f"输出目录已存在：{path}；如需覆盖请添加 --overwrite")
+        raise FileExistsError(f"输出已存在：{path}；如需覆盖请添加 --overwrite")
 
 
 def begin_staging(path: Path) -> Path:
@@ -356,6 +356,13 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
     audio_paths = [Path(item) for item in args.audio]
 
     ensure_output_available(final_output, args.overwrite)
+    # with_suffix would replace the last extension (--output dist/voice.v2
+    # would zip to dist/voice.zip), so two different builds could share one
+    # zip and clobber it without --overwrite. Append instead, and check the
+    # zip like the directory: it can outlive a deleted directory.
+    zip_path = Path(str(final_output) + ".zip")
+    if not args.no_zip:
+        ensure_output_available(zip_path, args.overwrite)
 
     # Build in a staging directory and swap it in only once the pack is
     # complete. --overwrite used to delete the previous artifact up front, so
@@ -369,7 +376,6 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
         raise
     finish_staging(output, final_output)
 
-    zip_path = final_output.with_suffix(".zip")
     if not args.no_zip:
         build_zip(final_output, zip_path)
 

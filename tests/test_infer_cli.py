@@ -56,6 +56,62 @@ class InferCliTest(unittest.TestCase):
             self.assertIn("--target-spk", command)
             self.assertIn(str(reference.resolve()), command)
 
+    def test_prefers_the_primary_reference_when_sorted_first_differs(
+        self,
+    ) -> None:
+        # collect_files sorts lexicographically, and "reference-2.wav" sorts
+        # before "reference.wav" ('-' < '.'): with several references the
+        # manifest's first entry is the SECONDARY take. The primary take must
+        # win, matching the path the desktop previews.
+        with tempfile.TemporaryDirectory() as temp_name:
+            pack = Path(temp_name) / "pack"
+            (pack / "reference").mkdir(parents=True)
+            primary = pack / "reference" / "reference.wav"
+            secondary = pack / "reference" / "reference-2.wav"
+            primary.write_bytes(b"RIFF")
+            secondary.write_bytes(b"RIFF")
+            (pack / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "format": "panda.voice-pack",
+                        "engine": "meanvc2",
+                        "files": [
+                            {"path": "reference/reference-2.wav"},
+                            {"path": "reference/reference.wav"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            resolved = resolve_reference_from_pack(pack)
+
+            self.assertEqual(resolved, primary.resolve())
+            self.assertNotEqual(resolved, secondary.resolve())
+
+    def test_falls_back_to_the_listed_reference_without_a_primary(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_name:
+            pack = Path(temp_name) / "pack"
+            (pack / "reference").mkdir(parents=True)
+            only = pack / "reference" / "reference-2.wav"
+            only.write_bytes(b"RIFF")
+            (pack / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "format": "panda.voice-pack",
+                        "engine": "meanvc2",
+                        "files": [{"path": "reference/reference-2.wav"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            resolved = resolve_reference_from_pack(pack)
+
+            self.assertEqual(resolved, only.resolve())
+
 
 if __name__ == "__main__":
     unittest.main()

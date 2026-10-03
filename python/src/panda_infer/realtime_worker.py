@@ -146,6 +146,28 @@ class LiveControls:
             return dict(self._values)
 
 
+def wait_for_reopen(
+    controls: LiveControls,
+    revision: int,
+    *,
+    poll_seconds: float = 0.05,
+    sleep=time.sleep,
+) -> bool:
+    """Block until a reopen-worthy change or a stop request arrives.
+
+    Returns True when the desktop asked to stop (``flush``); ``flush`` is
+    deliberately NOT a reopen key, so without this extra condition a stop
+    arriving while a device open is failing would never wake this wait and
+    the worker would spin until the desktop killed it three seconds later.
+    """
+    while (
+        controls.revision == revision
+        and not controls.snapshot().get("flush")
+    ):
+        sleep(poll_seconds)
+    return bool(controls.snapshot().get("flush"))
+
+
 def _read_stdin_controls(controls: LiveControls, stream=None) -> None:
     # Read raw bytes and decode as UTF-8. On Windows the default text encoding
     # is the system code page (GBK here), which mangles the device names in the
@@ -1357,8 +1379,11 @@ def main(argv: list[str] | None = None) -> int:
                         flush=True,
                     )
                     revision = controls.revision
-                    while controls.revision == revision:
-                        time.sleep(0.05)
+                    if wait_for_reopen(controls, revision):
+                        # Stop arrived while the device could not be opened:
+                        # leave the serve loop instead of reopening, so the
+                        # desktop gets its clean exit rather than a 3 s kill.
+                        break
                     continue
                 served = True
                 if controls.snapshot().get("flush"):
