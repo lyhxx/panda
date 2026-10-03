@@ -676,6 +676,11 @@ def run_realtime_session(
     )
 
     with contextlib.ExitStack() as stack:
+        if metrics_handle is not None:
+            # The serve loop re-enters this function on every device reopen;
+            # a handle left open would leak one file per switch. Registered
+            # before the streams so LIFO closes it after they stop writing.
+            stack.callback(metrics_handle.close)
         input_stream = None
         output_stream = None
         if no_output:

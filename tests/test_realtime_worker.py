@@ -7,6 +7,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from panda_infer.realtime_session import METRICS_PREFIX, ConversionSession
 from panda_infer.realtime_worker import (
@@ -252,6 +253,57 @@ class RunRealtimeSessionTest(unittest.TestCase):
             session.stop()
 
         self.assertIsInstance(session.last_error, RuntimeError)
+
+    def test_closes_the_metrics_sink_when_it_returns(self) -> None:
+        # The serve loop re-enters this function on every device change; a
+        # sink left open would leak one file handle per switch.
+        session = ConversionSession(
+            lambda chunk: [value * 2 for value in chunk],
+            4,
+            prefill_chunks=1,
+            max_backlog_chunks=4,
+            input_queue_chunks=4,
+        )
+        fake = FakeSoundDevice(ticks=6)
+        session.start()
+        fake.on_sleep = session.stop
+        opened: list[RecordingSink] = []
+
+        class RecordingSink:
+            def __init__(self) -> None:
+                self.closed = False
+
+            def write(self, text: str) -> None:
+                pass
+
+            def flush(self) -> None:
+                pass
+
+            def close(self) -> None:
+                self.closed = True
+
+        def fake_open(_path):
+            sink = RecordingSink()
+            opened.append(sink)
+            return sink
+
+        try:
+            with mock.patch(
+                "panda_infer.realtime_worker.open_metrics_file",
+                new=fake_open,
+            ):
+                run_realtime_session(
+                    session,
+                    stream_module=fake,
+                    poll_seconds=0.01,
+                    metrics_file="fake.jsonl",
+                    metrics_stream=io.StringIO(),
+                )
+        finally:
+            session.stop()
+
+        self.assertEqual(len(opened), 1)
+        self.assertTrue(opened[0].closed)
 
     def test_emits_parseable_metrics_lines(self) -> None:
         session = ConversionSession(

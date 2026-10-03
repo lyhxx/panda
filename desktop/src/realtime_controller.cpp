@@ -809,10 +809,15 @@ void RealtimeController::previewFile(
 }
 
 void RealtimeController::stop() {
+    // A device switch may have armed a restart; the finished handler checks
+    // pending_restart_ before stop_requested_, so without this an explicit
+    // stop would be overridden and the worker started again.
+    pending_restart_ = false;
     stop_impl(true);
 }
 
 void RealtimeController::stopNow() {
+    pending_restart_ = false;
     stop_impl(false);
 }
 
