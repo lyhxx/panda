@@ -58,13 +58,33 @@ QtObject {
         if (filtered.length === 0) {
             return devices
         }
-        // A virtual cable can surface under another host API. It is the only
-        // route to other applications, so it is always added back; a picker
-        // that silently omits it is the same dead end as before.
+        // PortAudio reports one physical endpoint once per host API, so a
+        // cable installed with VB-CABLE arrives as MME, DirectSound, WASAPI
+        // and WDM-KS copies of the same two endpoints -- one row each. When
+        // WASAPI already carries a virtual endpoint the cable is in the list,
+        // so that is the whole list: adding the other APIs' copies back is
+        // what made one choice look like six.
+        if (anyVirtualDevice(filtered)) {
+            return filtered
+        }
+        // WASAPI has no virtual endpoint at all, so some other host API holds
+        // the only route to other applications. Take every cable from the
+        // first API that has one instead of all of them: the remaining APIs
+        // are copies of those same endpoints, and one API's set is already
+        // the complete set it exposes.
+        let source = ""
         for (let j = 0; j < devices.length; ++j) {
-            if (devices[j].isVirtual === true
-                && filtered.indexOf(devices[j]) < 0) {
-                filtered.push(devices[j])
+            if (devices[j].isVirtual === true) {
+                source = devices[j].hostApi
+                break
+            }
+        }
+        if (source.length === 0) {
+            return filtered
+        }
+        for (let k = 0; k < devices.length; ++k) {
+            if (devices[k].isVirtual === true && devices[k].hostApi === source) {
+                filtered.push(devices[k])
             }
         }
         return filtered
@@ -127,6 +147,17 @@ QtObject {
         for (let i = 0; i < devices.length; ++i) {
             if (devices[i].deviceName === name) {
                 return devices[i].id
+            }
+        }
+        // MME truncates device names at 31 characters, so the very same cable
+        // is stored as both "CABLE Input (VB-Audio Virtual C" and the full
+        // WASAPI spelling. Matching either way round keeps a saved choice
+        // from silently falling back to the default device just because the
+        // API that named it is no longer listed.
+        for (let j = 0; j < devices.length; ++j) {
+            const deviceName = devices[j].deviceName
+            if (deviceName.startsWith(name) || name.startsWith(deviceName)) {
+                return devices[j].id
             }
         }
         return -1
