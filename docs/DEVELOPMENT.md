@@ -188,7 +188,10 @@ https://huggingface.co/s3prl/converted_ckpts/resolve/main/wavlm_large.pt
 
    打包脚本对运行时解压加重试（终端防护在 5 万文件突发写入时会偶发拒写），
    conda-unpack 在打包机跑过；1.0.0 已按 12.5-4 完成换路径验收（全新路径、
-   干净环境下 doctor / 模拟变声 / GUI 启动全绿），残留路径风险已实测排除。
+   干净环境下 doctor / 模拟变声 / GUI 启动全绿）。注意换路径不等于换机：
+   editable 安装的 `.pth` 指向打包机源码目录时，本机验收会把它掩盖掉——
+   打包脚本现已在 conda-unpack 后剥离 `__editable__*.pth`，且 `panda_version.py`
+   已随 `share\python` 分发，运行时对仓库零依赖。
 
 ### 2.5 环境验证命令
 
@@ -199,7 +202,7 @@ cmake -S . -B build\windows-msvc-desktop -G "Visual Studio 17 2022" -A x64 `
 cmake --build build\windows-msvc-desktop --config Release
 ctest --test-dir build\windows-msvc-desktop -C Release
 
-# Python：全部单元测试（176 个）
+# Python：全部单元测试（179 个）
 python -m unittest discover -s tests -v
 
 # 命令与诊断
@@ -247,7 +250,7 @@ powershell -ExecutionPolicy Bypass -File scripts\run_dev_desktop.ps1
 | 套件 | 命令 | 规模 |
 | --- | --- | --- |
 | C++（core/desktop/协议/会话/设备） | `ctest --test-dir build\windows-msvc-desktop -C Release` | 5 个目标 |
-| Python（引擎 + 音色包 + 安装器 + 版本一致性） | `python -m unittest discover -s tests -v` | 176 个 |
+| Python（引擎 + 音色包 + 安装器 + 版本一致性） | `python -m unittest discover -s tests -v` | 179 个 |
 
 工程经验（都是踩过的坑）：
 
@@ -328,9 +331,11 @@ panda voice-check --meanvc2-root ..\deps\MeanVC2 `
 [panda.metrics] {"chunk":24,"processing_ms":120.276,"chunk_ms":160.0,
   "buffer_ms":640.0,"overrun":false,"mean_ms":116.113,"max_ms":121.902,
   "starved_reads":0,"underrun_frames":0,"dropped_frames":50240,
-  "trimmed_frames":0,"input_dropped":0,
+  "input_dropped":0,"trimmed_frames":0,
+  "prefill_frames":0,"prefill_reads":0,"resume_reads":0,
   "input_rms":...,"input_peak":...,"output_rms":...,"output_peak":...,
-  "clipping":false}
+  "input_clipped":false,"output_clipped":false,
+  "input_latency_ms":...,"output_latency_ms":...,"device_block_ms":...}
 [panda.level]  ...   电平刷新
 [panda.ready]  ...   首块就绪
 ```
@@ -554,14 +559,20 @@ panda pack --name "我的音色" --id my-voice --audio 1.wav `
 - **音色库**：卡片网格、试听（`panda preview`，按参考音频试最多 8 秒，用所选
   输出设备原生采样率）、搜索（id+名称，刷新后保持）、收藏、排序（收藏优先/名称）、
   安装/删除/批量安装。
-- **底部控制条**：开启/停止、监听开关、输入音量、噪声门（开关+阈值）、
-  降噪（开关+三档，运行中禁改）、输入电平表、延迟状态条（2.5s OutCubic 平滑）。
+- **底部控制条**：状态行（音色名、状态文案、延迟状态条 2.5s OutCubic 平滑、
+  过载指示、监听指示）+ 三个按钮：开启/停止、监听开关（仅输出为虚拟声卡时
+  显示）、打开设置。主题三态切换（跟随系统/浅色/深色）在标题栏。
 - **设置弹窗**（玻璃风格）：
-  - 音频页：输出（首行"不输出"占位；虚拟设备标记；无虚拟声卡时一行提示与
-    VB-CABLE 下载引导）、输入、监听、麦克风测试（`panda mic-test`：录 3 秒回放，
-    区分采集/权限/输出问题）、输入/输出电平条、模型（120ms/40ms）、算力
-    （cpu/cuda）、预滚/缓冲上限（`clamp_latency` 钳制并回显）、延迟档位。
-  - 常规页：主题（浅色/深色/跟随系统）、诊断入口。
+  - 音频页：输入（设备下拉 + 电平条 + 麦克风音量直调系统音量）、输出（首行
+    "不输出"占位；虚拟设备标记；无虚拟声卡时一行提示与 VB-CABLE 下载引导；
+    电平条 + 输出音量）、监听、声音处理（降噪开关 + 三档、静音门开关 + 阈值）。
+    两个设备下拉在枚举到达前显示占位（正在检测/检测失败），枚举失败就地显示
+    错误并可点刷新重试。
+  - 常规页：性能与延迟（预滚块数、缓冲上限，`clamp_latency` 钳制并回显）、
+    诊断入口、关于。
+  - 模型与算力（120ms/40ms、cpu/cuda）由会话记忆并传给引擎（默认 120ms/cpu，
+    见 6.1）；1.0.0 界面暂无切换入口。麦克风自检走命令行 `panda mic-test`
+    （录 3 秒回放，区分采集/权限/输出问题），界面暂无入口。
 - **诊断**：运行日志面板（跟随文件尾；`[panda.metrics]` 分流到数值区）+
   「打开日志文件」按钮；只有真发生过 starve/下溢/丢帧才显示诊断行，
   健康会话不刷一排零。

@@ -378,6 +378,16 @@ if ($BundlePython) {
         throw "conda-unpack failed"
     }
 
+    # The development environment installed the engine as editable, which
+    # leaves a .pth pointing at THIS machine's source checkout. In the
+    # packaged runtime that pointer is dead weight on every other computer
+    # and a silent dependency on the repository here (it used to be the only
+    # reason `panda_version` resolved; that module now ships in share\python).
+    $sitePackages = Join-Path $pythonDirectory "Lib\site-packages"
+    Get-ChildItem -LiteralPath $sitePackages -Filter "__editable__*.pth" `
+        -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+
     $deepFilterDestination = Join-Path `
         $outputPath `
         "DeepFilterNet\DeepFilterNet3"

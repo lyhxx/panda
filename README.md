@@ -81,7 +81,7 @@ Apache License 2.0，见 [LICENSE](LICENSE)；Apache 声明见 [NOTICE](NOTICE)�
 
 ![主界面](docs/images/after_main_window.png)
 
-**设置 · 音频**：输出/输入/监听设备、音量、噪声门、降噪、延迟档位
+**设置 · 音频**：输出/输入/监听设备、输入输出电平、系统音量、降噪与静音门
 
 ![设置-音频](docs/images/after_settings_audio.png)
 
