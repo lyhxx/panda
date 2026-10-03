@@ -17,16 +17,15 @@
 
 ### 1.2 仓库结构
 
-2026-10 起 panda 与 panda-engine 合并为单仓库（原 panda-engine 已归档并挂指引），
+2026-10 起 panda 与 panda-engine 合并为单仓库（原 panda-engine 已并入后删除），
 Python 引擎源码位于 `python/`：
 
 ```text
 panda/
   CMakeLists.txt            顶层构建，版本号从 version.hpp 解析
   CMakePresets.json         构建预设
-  README.md                 产品文档
+  README.md                 产品文档（含开源组件清单）
   CHANGELOG.md              更新日志
-  THIRD_PARTY_NOTICES.md    第三方声明
   LICENSE / NOTICE
   core/                     C++20 核心库
     include/panda/          头文件（version.hpp = 全局版本唯一来源）
@@ -806,7 +805,9 @@ Panda-Models.zip   ─┘              python\、DeepFilterNet\、MeanVC2\
 5. 打 tag（与版本号一致，如 `v1.0.0`）并推送。
 6. GitHub Release：建 tag 对应 Release，上传四资产，说明**简要**
    （版本亮点 3–5 行 + 资产表 + 指向 CHANGELOG）。
-7. 归档状态检查：panda-engine 仓库保持 archived + 顶部指引。
+7. 合规核对：README「许可」的组件表与实际捆绑一致；`third_party/notices/`
+   中每个捆绑组件都有对应许可证原文（Qt 为 LGPL 动态链接，需随包附
+   许可证文本与源码获取说明）。
 
 > 1.0.0 发布前验收已执行并全绿（2026-10-04）：四资产解压到 C 盘全新路径、
 > 环境变量全裸，`doctor` 零错误，真实模型 `simulate --fast` RTF 0.32、

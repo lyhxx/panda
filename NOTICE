@@ -3,4 +3,5 @@ Copyright 2026 lyhxx and Panda contributors
 
 This product includes software developed by the Panda contributors.
 
-Third-party software notices are recorded in THIRD_PARTY_NOTICES.md.
+Third-party components are listed in README.md; license texts are shipped
+in third_party/notices/.

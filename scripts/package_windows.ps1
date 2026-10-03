@@ -496,8 +496,7 @@ if ($BundlePython) {
 foreach ($document in @(
         "LICENSE",
         "NOTICE",
-        "README.md",
-        "THIRD_PARTY_NOTICES.md"
+        "README.md"
     )) {
     Copy-Item `
         -LiteralPath (Join-Path $repoRoot $document) `

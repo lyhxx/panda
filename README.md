@@ -70,8 +70,20 @@ Discord、游戏、OBS 只认"麦克风"，需要一块虚拟声卡当桥（一�
 
 ## 许可
 
-Apache License 2.0，见 [LICENSE](LICENSE)。第三方声明见
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+Apache License 2.0，见 [LICENSE](LICENSE)；Apache 声明见 [NOTICE](NOTICE)。
+捆绑的开源组件如下（许可证原文随包分发于 `third_party/notices/`）：
+
+| 组件 | 说明 | 许可证 |
+| --- | --- | --- |
+| [Qt](https://www.qt.io/) 6.8.3 | 桌面运行时，随包分发 | LGPL-3.0 |
+| [Python](https://www.python.org/) 3.11 | 引擎运行时，随包分发 | PSF-2.0 |
+| [PyTorch](https://pytorch.org/) 2.5.1 | 模型推理，随包分发 | BSD-3-Clause |
+| [ONNX Runtime](https://onnxruntime.ai/) 1.30.0 | 模型推理，随包分发 | MIT |
+| [MeanVC2](https://github.com/ASLP-lab/MeanVC2) | 变声模型与运行时，随包分发 | Apache-2.0 |
+| [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) | 降噪运行时与模型，随包分发 | Apache-2.0 / MIT |
+| [Vocos](https://github.com/gemelo-ai/vocos) | 声码器（MeanVC2 组件），随包分发 | MIT |
+| [nlohmann/json](https://github.com/nlohmann/json) | 桌面源码依赖 | MIT |
+| [VB-CABLE](https://www.vb-cable.com) | 虚拟声卡，仅设置页外链、不分发 | 捐赠软件（VB-Audio） |
 
 ---
 
