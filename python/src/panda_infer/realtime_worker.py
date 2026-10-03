@@ -18,12 +18,28 @@ from panda_infer.dsp import (
     OutputGain,
     SoftLimiter,
     StreamResampler,
+    require_numpy,
 )
 from panda_infer.realtime_session import (
     ConversionSession,
     MonitorTap,
     format_metrics_line,
 )
+
+
+def copy_captured(samples) -> "np.ndarray":
+    """Copy one captured block into memory the input queue owns.
+
+    PortAudio reuses its capture buffer on every callback, so anything queued
+    for the model must not alias it. ConversionSession promises exactly that
+    ("samples are copied, so the caller may reuse its buffer immediately"),
+    but the copier used before this did not keep the promise: an already
+    contiguous float32 view -- which is precisely what the 16 kHz pass-through
+    path returns -- came back unchanged from np.ascontiguousarray, and queued
+    audio was overwritten mid-flight by the next callback.
+    """
+    np = require_numpy()
+    return np.array(samples, dtype=np.float32, copy=True)
 
 SAMPLE_RATE = 16000
 WARMUP_CHUNKS = 3
@@ -1163,9 +1179,7 @@ def main(argv: list[str] | None = None) -> int:
             prefill_chunks=args.prefill_chunks,
             max_backlog_chunks=args.max_backlog_chunks,
             trim_margin_chunks=args.trim_margin_chunks,
-            copy_input=lambda samples: np.ascontiguousarray(
-                samples, dtype=np.float32
-            ),
+            copy_input=copy_captured,
         )
         # The gate always exists so it can be switched on live; whether it is
         # active is carried by the live controls.

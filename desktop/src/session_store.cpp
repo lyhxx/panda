@@ -26,8 +26,27 @@ int sanitized_device(const QVariant& value) {
     if (!value.isValid()) {
         return -1;
     }
-    const auto id = value.toInt();
-    return id < 0 ? -1 : id;
+    bool ok = false;
+    const auto id = value.toInt(&ok);
+    // A value that is not a number at all (hand-edited registry, type drift)
+    // used to parse as 0 and silently select the first device.
+    return ok && id >= 0 ? id : -1;
+}
+
+// An empty key means "the list was not there to resolve against", never an
+// explicit choice ("none" is the marker for that). Writing empty over a real
+// key would destroy the stable identity the next launch needs to re-resolve
+// the device after Windows renumbers it.
+void save_device_key(
+    QSettings& settings,
+    const QString& name,
+    const QVariant& value
+) {
+    const auto text = value.toString();
+    if (text.isEmpty()) {
+        return;
+    }
+    settings.setValue(name, text);
 }
 
 }  // namespace
@@ -110,7 +129,8 @@ void SessionStore::save(const QVariantMap& values) const {
         QStringLiteral("session/input_device"),
         clean.value(QStringLiteral("inputDevice"))
     );
-    settings.setValue(
+    save_device_key(
+        settings,
         QStringLiteral("session/input_device_key"),
         clean.value(QStringLiteral("inputDeviceKey"))
     );
@@ -118,7 +138,8 @@ void SessionStore::save(const QVariantMap& values) const {
         QStringLiteral("session/output_device"),
         clean.value(QStringLiteral("outputDevice"))
     );
-    settings.setValue(
+    save_device_key(
+        settings,
         QStringLiteral("session/output_device_key"),
         clean.value(QStringLiteral("outputDeviceKey"))
     );
@@ -126,7 +147,8 @@ void SessionStore::save(const QVariantMap& values) const {
         QStringLiteral("session/monitor_device"),
         clean.value(QStringLiteral("monitorDevice"))
     );
-    settings.setValue(
+    save_device_key(
+        settings,
         QStringLiteral("session/monitor_device_key"),
         clean.value(QStringLiteral("monitorDeviceKey"))
     );

@@ -948,5 +948,39 @@ class FlushDrainTest(unittest.TestCase):
         self.assertLess(elapsed, 2.0)
 
 
+class CopyCapturedTest(unittest.TestCase):
+    """The input queue must own its memory: PortAudio reuses capture buffers."""
+
+    @unittest.skipUnless(HAVE_NUMPY, "numpy is required")
+    def test_copies_an_already_contiguous_float32_view(self) -> None:
+        import numpy as np
+
+        from panda_infer.realtime_worker import copy_captured
+
+        # What the 16 kHz pass-through path returns: contiguous float32, i.e.
+        # exactly the case np.ascontiguousarray used to leave uncopied.
+        source = np.arange(480, dtype=np.float32)
+        queued = copy_captured(source)
+        self.assertEqual(queued.dtype, np.float32)
+        self.assertFalse(np.shares_memory(queued, source))
+
+        source[:] = 0.0  # the next callback overwrites the capture buffer
+        self.assertEqual(float(queued[-1]), 479.0)
+
+    @unittest.skipUnless(HAVE_NUMPY, "numpy is required")
+    def test_submit_keeps_queued_audio_after_the_buffer_is_reused(self) -> None:
+        import numpy as np
+
+        from panda_infer.realtime_worker import copy_captured
+
+        session = ConversionSession(lambda chunk: chunk, 4, copy_input=copy_captured)
+        source = np.ones(4, dtype=np.float32)
+        session.submit_input(source)
+
+        source[:] = 0.0
+        queued = session._input.get_nowait()
+        self.assertEqual(float(queued[0]), 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,8 @@ private slots:
     void round_trips_values();
     void rejects_unknown_model_and_compute();
     void clamps_latency_and_device_ids();
+    void unknown_keys_do_not_erase_saved_ones();
+    void non_numeric_device_ids_become_unset();
     void clear_removes_everything();
 };
 
@@ -176,6 +178,72 @@ void SessionStoreTest::clamps_latency_and_device_ids() {
         values.value(QStringLiteral("denoiseLevel")).toString(),
         QStringLiteral("strong")
     );
+}
+
+void SessionStoreTest::unknown_keys_do_not_erase_saved_ones() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const SessionStore store(settings_file(dir));
+
+    store.save(
+        QVariantMap{
+            {QStringLiteral("inputDevice"), 2},
+            {QStringLiteral("inputDeviceKey"), QStringLiteral("WASAPI|Mic")},
+            {QStringLiteral("outputDevice"), 4},
+            {QStringLiteral("outputDeviceKey"), QStringLiteral("WASAPI|Speakers")},
+            {QStringLiteral("monitorDevice"), -1},
+            {QStringLiteral("monitorDeviceKey"), QStringLiteral("none")},
+        }
+    );
+
+    // A close before the device list is available hands over empty keys.
+    // "Empty" means "could not resolve", so it must not erase the identity
+    // the next launch needs to re-resolve after Windows renumbers devices.
+    store.save(
+        QVariantMap{
+            {QStringLiteral("inputDevice"), 2},
+            {QStringLiteral("inputDeviceKey"), QString()},
+            {QStringLiteral("outputDevice"), 4},
+            {QStringLiteral("outputDeviceKey"), QString()},
+            {QStringLiteral("monitorDevice"), -1},
+            {QStringLiteral("monitorDeviceKey"), QString()},
+        }
+    );
+
+    const auto values = store.load();
+
+    QCOMPARE(
+        values.value(QStringLiteral("inputDeviceKey")).toString(),
+        QStringLiteral("WASAPI|Mic")
+    );
+    QCOMPARE(
+        values.value(QStringLiteral("outputDeviceKey")).toString(),
+        QStringLiteral("WASAPI|Speakers")
+    );
+    QCOMPARE(
+        values.value(QStringLiteral("monitorDeviceKey")).toString(),
+        QStringLiteral("none")
+    );
+}
+
+void SessionStoreTest::non_numeric_device_ids_become_unset() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const SessionStore store(settings_file(dir));
+
+    store.save(
+        QVariantMap{
+            {QStringLiteral("inputDevice"), QStringLiteral("abc")},
+            {QStringLiteral("outputDevice"), QStringLiteral("7")},
+        }
+    );
+
+    const auto values = store.load();
+
+    // QVariant("abc").toInt() is 0 with ok=false; taking that at face value
+    // would silently select the first device instead of "not chosen".
+    QCOMPARE(values.value(QStringLiteral("inputDevice")).toInt(), -1);
+    QCOMPARE(values.value(QStringLiteral("outputDevice")).toInt(), 7);
 }
 
 void SessionStoreTest::clear_removes_everything() {

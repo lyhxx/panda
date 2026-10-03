@@ -88,7 +88,8 @@ Status run_tar(
 
     const std::filesystem::path tar_path =
         std::filesystem::path(system_directory) / L"tar.exe";
-    if (!std::filesystem::is_regular_file(tar_path)) {
+    std::error_code probe_error;
+    if (!std::filesystem::is_regular_file(tar_path, probe_error)) {
         return Status::error(ErrorCode::install_failed, "tar.exe is not available");
     }
 
@@ -200,8 +201,22 @@ bool has_reparse_point(const std::filesystem::path& path) {
 }
 
 bool has_symlink_in_tree(const std::filesystem::path& root) {
-    for (const auto& item : std::filesystem::recursive_directory_iterator(root)) {
-        if (item.is_symlink() || has_reparse_point(item.path())) {
+    // A traversal that cannot be completed cannot be certified clean: answer
+    // "yes" and let the install refuse, rather than let an uncaught
+    // filesystem_error escape into the Qt event loop and terminate the app.
+    std::error_code error;
+    std::filesystem::recursive_directory_iterator it(root, error);
+    if (error) {
+        return true;
+    }
+    const std::filesystem::recursive_directory_iterator finish;
+    while (it != finish) {
+        std::error_code item_error;
+        if (it->is_symlink(item_error) || has_reparse_point(it->path())) {
+            return true;
+        }
+        it.increment(error);
+        if (error) {
             return true;
         }
     }
@@ -459,28 +474,46 @@ Status scan_voice_packs(
     manifests.clear();
     std::error_code error;
     if (!std::filesystem::is_directory(voices_root, error)) {
+        // A root that does not exist yet is the normal first-run state. The
+        // probe itself failing (permissions, broken link) is not: reporting it
+        // as an empty library would wipe the caller's current rows.
+        if (error) {
+            return Status::error(
+                ErrorCode::io_error,
+                "failed to read the voice library root"
+            );
+        }
         return Status::success();
     }
 
-    for (const auto& item : std::filesystem::directory_iterator(voices_root, error)) {
+    // The throwing directory_iterator API surfaces I/O failures as uncaught
+    // filesystem_error, and the error_code check that used to sit inside the
+    // loop was dead code (the range-for increments through the throwing
+    // overload, so `error` only ever got set by the constructor -- which on
+    // failure simply yielded zero iterations and a false "success"). Iterate
+    // explicitly and route every failure into the returned status.
+    std::filesystem::directory_iterator it(voices_root, error);
+    if (error) {
+        return Status::error(ErrorCode::io_error, "failed while scanning voice packs");
+    }
+    const std::filesystem::directory_iterator finish;
+    while (it != finish) {
+        std::error_code item_error;
+        if (it->is_directory(item_error) && !item_error) {
+            const auto manifest_path = it->path() / "manifest.json";
+            if (std::filesystem::is_regular_file(manifest_path, item_error) &&
+                !item_error) {
+                Manifest manifest;
+                const auto status = parse_manifest(manifest_path, manifest);
+                if (status.ok() &&
+                    validate_pack_root(it->path(), manifest).ok()) {
+                    manifests.push_back(std::move(manifest));
+                }
+            }
+        }
+        it.increment(error);
         if (error) {
             return Status::error(ErrorCode::io_error, "failed while scanning voice packs");
-        }
-        if (!item.is_directory()) {
-            continue;
-        }
-        const auto manifest_path = item.path() / "manifest.json";
-        if (!std::filesystem::is_regular_file(manifest_path)) {
-            continue;
-        }
-
-        Manifest manifest;
-        const auto status = parse_manifest(manifest_path, manifest);
-        if (!status.ok()) {
-            continue;
-        }
-        if (validate_pack_root(item.path(), manifest).ok()) {
-            manifests.push_back(std::move(manifest));
         }
     }
 

@@ -13,6 +13,10 @@ QtObject {
     property string settingsTab: "audio"    // "audio" | "general"
 
     property string selectedPack: ""
+    // The pack the user actually chose, remembered so a selection that had to
+    // move (a rescan that missed the folder mid-copy) comes back to it as soon
+    // as it is visible again instead of staying re-homed on the first pack.
+    property string preferredPack: ""
     property string selectedModel: "120ms"
     property string selectedCompute: "cpu"
 
@@ -219,6 +223,11 @@ QtObject {
     // here: no context property reaches into this singleton.
     function reconcilePackSelection(packs) {
         if (packs.containsFolder(selectedPack)) {
+            preferredPack = selectedPack
+            return
+        }
+        if (preferredPack.length > 0 && packs.containsFolder(preferredPack)) {
+            selectedPack = preferredPack
             return
         }
         selectedPack = packs.firstFolder()

@@ -204,44 +204,53 @@ ApplicationWindow {
 
         function onDevicesChanged() {
             // Only WASAPI devices are selectable, so resolve against that list
-            // and normalise anything that cannot be shown.
+            // and normalise anything that cannot be shown. An empty list means
+            // the enumeration has not arrived (or found nothing) -- there is
+            // nothing to resolve against, so the pending keys are kept for the
+            // next payload and the current selection is left untouched;
+            // consuming them here is what lost an explicit choice to whatever
+            // the fallback device happened to be.
             const inputs = AppState.filteredDevices(realtimeController.inputDevices)
             const outputs = AppState.filteredDevices(realtimeController.outputDevices)
 
-            let inputId = AppState.resolveDeviceId(inputs, AppState.pendingInputDeviceKey)
-            if (inputId < 0 && AppState.containsDevice(inputs, AppState.selectedInputDevice)) {
-                inputId = AppState.selectedInputDevice
+            if (inputs.length > 0) {
+                let inputId = AppState.resolveDeviceId(inputs, AppState.pendingInputDeviceKey)
+                if (inputId < 0 && AppState.containsDevice(inputs, AppState.selectedInputDevice)) {
+                    inputId = AppState.selectedInputDevice
+                }
+                AppState.selectedInputDevice = inputId >= 0
+                    ? inputId
+                    : AppState.firstDeviceId(inputs, realtimeController.defaultInputDevice,
+                                             realtimeController.inputDevices)
+                AppState.pendingInputDeviceKey = ""
             }
-            AppState.selectedInputDevice = inputId >= 0
-                ? inputId
-                : AppState.firstDeviceId(inputs, realtimeController.defaultInputDevice,
-                                         realtimeController.inputDevices)
-            AppState.pendingInputDeviceKey = ""
 
-            let outputId = AppState.resolveDeviceId(outputs, AppState.pendingOutputDeviceKey)
-            if (AppState.pendingOutputDeviceKey === "none") {
-                outputId = -1
-            } else if (outputId < 0 && AppState.containsDevice(outputs, AppState.selectedOutputDevice)) {
-                outputId = AppState.selectedOutputDevice
-            }
-            AppState.selectedOutputDevice = outputId >= 0
-                ? outputId
-                : (AppState.pendingOutputDeviceKey === "none"
-                   ? -1
-                   : AppState.firstDeviceId(outputs, realtimeController.defaultOutputDevice,
-                                            realtimeController.outputDevices))
-            AppState.pendingOutputDeviceKey = ""
+            if (outputs.length > 0) {
+                let outputId = AppState.resolveDeviceId(outputs, AppState.pendingOutputDeviceKey)
+                if (AppState.pendingOutputDeviceKey === "none") {
+                    outputId = -1
+                } else if (outputId < 0 && AppState.containsDevice(outputs, AppState.selectedOutputDevice)) {
+                    outputId = AppState.selectedOutputDevice
+                }
+                AppState.selectedOutputDevice = outputId >= 0
+                    ? outputId
+                    : (AppState.pendingOutputDeviceKey === "none"
+                       ? -1
+                       : AppState.firstDeviceId(outputs, realtimeController.defaultOutputDevice,
+                                                realtimeController.outputDevices))
+                AppState.pendingOutputDeviceKey = ""
 
-            let monitorId = AppState.resolveDeviceId(outputs, AppState.pendingMonitorDeviceKey)
-            if (AppState.pendingMonitorDeviceKey === "none") {
-                monitorId = -1
-            } else if (monitorId < 0 && AppState.containsDevice(outputs, AppState.selectedMonitorDevice)) {
-                monitorId = AppState.selectedMonitorDevice
-            }
-            AppState.selectedMonitorDevice = monitorId
-            AppState.pendingMonitorDeviceKey = ""
-            if (monitorId >= 0) {
-                root.lastMonitorDevice = monitorId
+                let monitorId = AppState.resolveDeviceId(outputs, AppState.pendingMonitorDeviceKey)
+                if (AppState.pendingMonitorDeviceKey === "none") {
+                    monitorId = -1
+                } else if (monitorId < 0 && AppState.containsDevice(outputs, AppState.selectedMonitorDevice)) {
+                    monitorId = AppState.selectedMonitorDevice
+                }
+                AppState.selectedMonitorDevice = monitorId
+                AppState.pendingMonitorDeviceKey = ""
+                if (monitorId >= 0) {
+                    root.lastMonitorDevice = monitorId
+                }
             }
 
             root.syncMicMonitor()

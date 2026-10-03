@@ -275,8 +275,8 @@ void PackListModel::refresh() {
         manifests
     );
 
-    all_entries_.clear();
     if (status.ok()) {
+        all_entries_.clear();
         all_entries_.reserve(manifests.size());
         for (auto& manifest : manifests) {
             const auto id = from_utf8(manifest.id).toStdWString();
@@ -285,14 +285,13 @@ void PackListModel::refresh() {
                 std::filesystem::path(voicesRoot_.toStdWString()) / id,
             });
         }
-    }
-
-    apply_filter();
-
-    // Report outside the model reset so views see errors after the new rows.
-    if (status.ok()) {
+        apply_filter();
+        // Report outside the model reset so views see errors after the new rows.
         set_error(panda::ErrorCode::none, QString());
     } else {
+        // A failed scan means "unknown", not "the library is empty". Wiping
+        // the rows here would re-home the selection off the very pack the user
+        // is playing -- and the close-time save would persist that loss.
         set_error(status.code, describe_error(status));
     }
 
