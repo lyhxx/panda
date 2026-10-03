@@ -21,7 +21,6 @@ QtObject {
     property int selectedMonitorDevice: -1
 
     property string deviceApiFilter: "wasapi"    // "wasapi" | "all"
-    property bool showAllDevices: false
 
     // Stable keys used to re-resolve a device after Windows renumbers them.
     property string pendingInputDeviceKey: ""

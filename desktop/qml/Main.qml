@@ -14,9 +14,36 @@ ApplicationWindow {
     visible: true
     title: productName
     color: "transparent"
-    flags: Qt.Window | Qt.FramelessWindowHint
+    // Qt.FramelessWindowHint alone leaves the style without WS_MINIMIZEBOX,
+    // so Windows refuses to minimize the window from the taskbar (the
+    // title-bar button still worked because it calls showMinimized() itself).
+    // The hint only sets the style bit -- it does not draw a system frame.
+    flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowMinimizeButtonHint
 
     property int lastMonitorDevice: -1
+
+    // The worker reports progress at real stage boundaries, so its number
+    // arrives in steps (20 -> 30 -> 59 -> 80). Ease the displayed value
+    // toward it so the text counts up continuously instead of jumping. A new
+    // load resets the real value to zero, and snapping there beats animating
+    // a restart backwards through every percentage it just showed.
+    property real shownProgress: 0
+    property bool easingProgress: false
+    Behavior on shownProgress {
+        enabled: root.easingProgress
+        NumberAnimation {
+            duration: 700
+            easing.type: Easing.OutCubic
+        }
+    }
+    Connections {
+        target: realtimeController
+        function onStartupProgressChanged() {
+            var v = realtimeController.startupProgress
+            root.easingProgress = v > root.shownProgress
+            root.shownProgress = v
+        }
+    }
 
     readonly property string selectedPackName: AppState.selectedPack.length > 0
         ? (packListModel.displayNameForFolder(AppState.selectedPack)
@@ -375,7 +402,7 @@ ApplicationWindow {
                         if (realtimeController.running && !realtimeController.ready) {
                             return realtimeController.startupProgress > 0
                                    ? qsTr("正在加载模型… %1%").arg(
-                                       realtimeController.startupProgress
+                                       Math.round(root.shownProgress)
                                    )
                                    : realtimeController.status
                         }
