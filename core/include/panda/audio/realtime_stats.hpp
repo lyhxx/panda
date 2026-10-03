@@ -31,7 +31,18 @@ struct RealtimeStats {
     std::uint64_t dropped_frames{0};
     std::uint64_t trimmed_frames{0};
 
+    // What the audio backend holds on its own, measured when the streams were
+    // opened, plus the callback width that drives both. PortAudio charges two
+    // callback widths per direction, which used to be invisible in the UI even
+    // though it was the largest single term in what the listener hears.
+    double input_latency_ms{0.0};
+    double output_latency_ms{0.0};
+    double device_block_ms{0.0};
+
     [[nodiscard]] double realtime_factor() const noexcept;
+    // Mouth-to-ear estimate: device capture buffering + our jitter buffer +
+    // conversion time + device playback buffering.
+    [[nodiscard]] double total_latency_ms() const noexcept;
 };
 
 [[nodiscard]] std::optional<RealtimeStats> parse_realtime_stats(

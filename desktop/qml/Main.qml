@@ -193,7 +193,9 @@ ApplicationWindow {
     onClosing: {
         persistSettings()
         realtimeController.stopMicMonitor()
-        realtimeController.stop()
+        // Quitting: no drain. A worker that outlived the window would keep the
+        // microphone open, and the next start would fail with "device busy".
+        realtimeController.stopNow()
     }
 
     Connections {
@@ -419,15 +421,27 @@ ApplicationWindow {
 
                 StatusPill {
                     visible: realtimeController.hasStats
-                    // Glass-to-glass: whatever is queued for playback plus the
-                    // time the current chunk still needs. RTF alone did not
-                    // tell the user how far behind real time they are.
-                    text: qsTr("延迟 %1ms").arg(
-                        Math.round(
-                            realtimeController.bufferMs
-                            + realtimeController.processingMs
-                        )
-                    )
+                             && realtimeController.running
+                    // Mouth-to-ear: device capture + our jitter buffer +
+                    // conversion + device playback. Counting only the middle
+                    // two terms made the readout look better than the delay
+                    // the listener actually heard.
+                    //
+                    // Slowly smoothed, because the jitter buffer level is an
+                    // instant reading: the converter hands audio over in
+                    // 120/240 ms bursts, so the raw depth swings from ~0 ms to
+                    // ~260 ms inside one cycle while the delay a person
+                    // perceives is the average of it. A fast animation would
+                    // just redraw that swing at 0.5 s intervals -- the "up to
+                    // 400 ms" jumps the status bar used to show.
+                    property real latencyShown: realtimeController.latencyMs
+                    Behavior on latencyShown {
+                        NumberAnimation {
+                            duration: 2500
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                    text: qsTr("延迟 %1ms").arg(Math.round(latencyShown))
                 }
 
                 StatusPill {

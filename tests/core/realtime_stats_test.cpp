@@ -20,7 +20,8 @@ void run_realtime_stats_tests() {
         R"("input_rms":0.021,"input_peak":0.18,"output_rms":0.04,)"
         R"("output_peak":0.72,"input_clipped":false,"output_clipped":false,)"
         R"("starved_reads":0,"underrun_frames":0,"dropped_frames":12,)"
-        R"("trimmed_frames":4160})"
+        R"("trimmed_frames":4160,"input_latency_ms":40.0,)"
+        R"("output_latency_ms":40.0,"device_block_ms":20.0})"
     );
     assert(metrics.has_value());
     assert(metrics->chunk_index == 123);
@@ -40,6 +41,13 @@ void run_realtime_stats_tests() {
     assert(metrics->underrun_frames == 0);
     assert(metrics->dropped_frames == 12);
     assert(metrics->trimmed_frames == 4160);
+    assert(near(metrics->input_latency_ms, 40.0));
+    assert(near(metrics->output_latency_ms, 40.0));
+    assert(near(metrics->device_block_ms, 20.0));
+    // Device capture + our buffer + conversion + device playback. The device
+    // terms are charged on top of our queue, so leaving them out made the
+    // readout systematically better than the delay the listener heard.
+    assert(near(metrics->total_latency_ms(), 40.0 + 200.0 + 115.3 + 40.0));
 
     const auto metrics_overrun = panda::audio::parse_realtime_stats(
         R"([panda.metrics] {"chunk":7,"processing_ms":190.5,"chunk_ms":160.0,)"
@@ -51,6 +59,10 @@ void run_realtime_stats_tests() {
     assert(near(metrics_overrun->realtime_factor(), 1.190625));
     // Optional context fields are absent here, so they stay zero.
     assert(near(metrics_overrun->mean_ms, 0.0));
+    // Without device terms the total still degrades to our own two terms
+    // instead of pretending there is no device in the path.
+    assert(near(metrics_overrun->input_latency_ms, 0.0));
+    assert(near(metrics_overrun->total_latency_ms(), 190.5));
 
     // Legacy upstream console format must keep working.
     const auto ok = panda::audio::parse_realtime_stats(

@@ -102,6 +102,9 @@ std::optional<RealtimeStats> parse_metrics_line(std::string_view line) {
         .underrun_frames = json_counter(parsed, "underrun_frames"),
         .dropped_frames = json_counter(parsed, "dropped_frames"),
         .trimmed_frames = json_counter(parsed, "trimmed_frames"),
+        .input_latency_ms = json_number(parsed, "input_latency_ms").value_or(0.0),
+        .output_latency_ms = json_number(parsed, "output_latency_ms").value_or(0.0),
+        .device_block_ms = json_number(parsed, "device_block_ms").value_or(0.0),
     };
 }
 
@@ -142,6 +145,10 @@ double RealtimeStats::realtime_factor() const noexcept {
         return 0.0;
     }
     return processing_ms / chunk_ms;
+}
+
+double RealtimeStats::total_latency_ms() const noexcept {
+    return input_latency_ms + buffer_ms + processing_ms + output_latency_ms;
 }
 
 std::optional<RealtimeStats> parse_realtime_stats(std::string_view line) {

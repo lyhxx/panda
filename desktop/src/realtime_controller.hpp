@@ -28,6 +28,13 @@ class RealtimeController final : public QObject {
     Q_PROPERTY(double processingMs READ processingMs NOTIFY statsChanged)
     Q_PROPERTY(double chunkMs READ chunkMs NOTIFY statsChanged)
     Q_PROPERTY(double bufferMs READ bufferMs NOTIFY statsChanged)
+    // Mouth-to-ear: device capture + jitter buffer + conversion + device
+    // playback. The UI used to show only the middle two terms, which is why
+    // the number on screen always looked better than what the listener heard.
+    Q_PROPERTY(double latencyMs READ latencyMs NOTIFY statsChanged)
+    Q_PROPERTY(double inputLatencyMs READ inputLatencyMs NOTIFY statsChanged)
+    Q_PROPERTY(double outputLatencyMs READ outputLatencyMs NOTIFY statsChanged)
+    Q_PROPERTY(double deviceBlockMs READ deviceBlockMs NOTIFY statsChanged)
     Q_PROPERTY(double realtimeFactor READ realtimeFactor NOTIFY statsChanged)
     Q_PROPERTY(double inputRms READ inputRms NOTIFY statsChanged)
     Q_PROPERTY(double inputPeak READ inputPeak NOTIFY statsChanged)
@@ -75,6 +82,10 @@ public:
     [[nodiscard]] double processingMs() const;
     [[nodiscard]] double chunkMs() const;
     [[nodiscard]] double bufferMs() const;
+    [[nodiscard]] double latencyMs() const;
+    [[nodiscard]] double inputLatencyMs() const;
+    [[nodiscard]] double outputLatencyMs() const;
+    [[nodiscard]] double deviceBlockMs() const;
     [[nodiscard]] double realtimeFactor() const;
     [[nodiscard]] double inputRms() const;
     [[nodiscard]] double inputPeak() const;
@@ -123,7 +134,12 @@ public:
         int inputDevice,
         int outputDevice
     );
+    // Asks the worker to play out everything still in flight and then exits on
+    // its own; only terminated as a fallback if that does not happen.
     Q_INVOKABLE void stop();
+    // Immediate stop with no drain. For quitting the app, where an orphaned
+    // worker still holding the microphone would be worse than a cut-off tail.
+    Q_INVOKABLE void stopNow();
     // Sends the current devices so the worker can reopen only the streams.
     Q_INVOKABLE void updateLiveDevices(int inputDevice, int outputDevice);
     // Stops and starts the worker again, keeping the current voice/model.
@@ -185,6 +201,7 @@ private:
     void set_status(const QString& value);
     void set_device_error(const QString& value);
     void schedule_reconnect();
+    void stop_impl(bool drain);
 
     QProcess process_;
     QProcess preview_process_;
@@ -193,6 +210,10 @@ private:
     QProcess device_process_;
     QTimer restart_timer_;
     QTimer stability_timer_;
+    // Fallbacks armed by stop_impl; restarting one cancels the previous stop's
+    // timers, so a late fallback can never terminate a freshly started worker.
+    QTimer stop_terminate_timer_;
+    QTimer stop_kill_timer_;
     QString status_;
     QString log_text_;
     QVariantList input_devices_;

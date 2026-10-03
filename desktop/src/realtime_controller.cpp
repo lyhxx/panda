@@ -72,6 +72,32 @@ RealtimeController::RealtimeController(QObject* parent)
     restart_timer_.setSingleShot(true);
     stability_timer_.setSingleShot(true);
     stability_timer_.setInterval(10000);
+    // Fallbacks for the stop path: the worker is first asked to drain what it
+    // still holds, and only terminated if it does not exit on its own. Both
+    // timers are restarted by every stop, so a stale fallback can never act on
+    // a process that has already been replaced.
+    stop_terminate_timer_.setSingleShot(true);
+    connect(
+        &stop_terminate_timer_,
+        &QTimer::timeout,
+        this,
+        [this] {
+            if (running()) {
+                process_.terminate();
+            }
+        }
+    );
+    stop_kill_timer_.setSingleShot(true);
+    connect(
+        &stop_kill_timer_,
+        &QTimer::timeout,
+        this,
+        [this] {
+            if (running()) {
+                process_.kill();
+            }
+        }
+    );
 
     connect(
         &process_,
@@ -411,6 +437,22 @@ double RealtimeController::bufferMs() const {
     return stats_.buffer_ms;
 }
 
+double RealtimeController::latencyMs() const {
+    return stats_.total_latency_ms();
+}
+
+double RealtimeController::inputLatencyMs() const {
+    return stats_.input_latency_ms;
+}
+
+double RealtimeController::outputLatencyMs() const {
+    return stats_.output_latency_ms;
+}
+
+double RealtimeController::deviceBlockMs() const {
+    return stats_.device_block_ms;
+}
+
 double RealtimeController::realtimeFactor() const {
     return stats_.realtime_factor();
 }
@@ -734,6 +776,9 @@ void RealtimeController::startRealtime(
     stop_requested_ = false;
     restart_timer_.stop();
     stability_timer_.stop();
+    // Whatever the previous stop left armed must not fire into this process.
+    stop_terminate_timer_.stop();
+    stop_kill_timer_.stop();
     reconnect_attempts_ = 0;
     emit reconnectChanged();
     process_.setArguments(last_realtime_arguments_);
@@ -802,6 +847,14 @@ void RealtimeController::previewFile(
 }
 
 void RealtimeController::stop() {
+    stop_impl(true);
+}
+
+void RealtimeController::stopNow() {
+    stop_impl(false);
+}
+
+void RealtimeController::stop_impl(bool drain) {
     if (!running()) {
         return;
     }
@@ -809,12 +862,27 @@ void RealtimeController::stop() {
     restart_timer_.stop();
     stability_timer_.stop();
     set_status(QStringLiteral("正在停止实时变声"));
+    if (drain) {
+        // The worker still holds captured audio in its input queue (up to
+        // ~1.3 s), the model lags its last input by ~260 ms, and the buffer
+        // holds what has been converted but not yet played. Terminating first
+        // threw all of that away, which is how the end of a sentence went
+        // missing when the listener pressed stop.
+        const QJsonObject payload{
+            {QStringLiteral("flush"), true},
+        };
+        process_.write(
+            QJsonDocument(payload).toJson(QJsonDocument::Compact) +
+            QByteArrayLiteral("\n")
+        );
+        // The worker bounds its own drain at 1.5 s and then exits by itself;
+        // these are only the backstops for a wedged worker.
+        stop_terminate_timer_.start(3000);
+        stop_kill_timer_.start(5000);
+        return;
+    }
     process_.terminate();
-    QTimer::singleShot(1500, this, [this] {
-        if (running()) {
-            process_.kill();
-        }
-    });
+    stop_kill_timer_.start(1500);
 }
 
 void RealtimeController::restartRealtime(int inputDevice, int outputDevice) {
@@ -825,7 +893,9 @@ void RealtimeController::restartRealtime(int inputDevice, int outputDevice) {
         pending_restart_ = true;
         pending_input_device_ = inputDevice;
         pending_output_device_ = outputDevice;
-        stop();
+        // A device switch restarts immediately: the user is waiting on the new
+        // route, so draining the old one would only add up to 1.5 s.
+        stop_impl(false);
         return;
     }
     startRealtime(
@@ -1173,6 +1243,19 @@ void RealtimeController::consume_log_line(
             emit readyChanged();
         }
         set_status(QStringLiteral("实时变声运行中"));
+        return;
+    }
+
+    if (line.trimmed().startsWith(QStringLiteral("[panda.flush]"))) {
+        // The stop drain report: how long the tail took and what was still
+        // queued. Worth keeping in the event file when a listener reports a
+        // cut-off word, but raw JSON the listener has no use for, so it stays
+        // out of the log pane.
+        QFile log(QDir::tempPath() + QStringLiteral("/panda_events.log"));
+        if (log.open(QIODevice::Append | QIODevice::Text)) {
+            log.write((line + QLatin1Char('\n')).toUtf8());
+            log.close();
+        }
         return;
     }
 
