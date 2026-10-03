@@ -210,6 +210,12 @@ ApplicationWindow {
             // next payload and the current selection is left untouched;
             // consuming them here is what lost an explicit choice to whatever
             // the fallback device happened to be.
+            //
+            // A key that resolves to a live device is the stable identity of
+            // that device, so it is written back after a confirmed match and
+            // kept otherwise: only a confirmed identity updates it, never the
+            // fallback, or a temporarily missing cable would be forgotten on
+            // the very rescan that should recover it.
             const inputs = AppState.filteredDevices(realtimeController.inputDevices)
             const outputs = AppState.filteredDevices(realtimeController.outputDevices)
 
@@ -222,33 +228,42 @@ ApplicationWindow {
                     ? inputId
                     : AppState.firstDeviceId(inputs, realtimeController.defaultInputDevice,
                                              realtimeController.inputDevices)
-                AppState.pendingInputDeviceKey = ""
+                if (inputId >= 0) {
+                    AppState.pendingInputDeviceKey = AppState.deviceKey(
+                        realtimeController.inputDevices, inputId)
+                }
             }
 
             if (outputs.length > 0) {
+                const outputExplicitNone = AppState.pendingOutputDeviceKey === "none"
                 let outputId = AppState.resolveDeviceId(outputs, AppState.pendingOutputDeviceKey)
-                if (AppState.pendingOutputDeviceKey === "none") {
+                if (outputExplicitNone) {
                     outputId = -1
                 } else if (outputId < 0 && AppState.containsDevice(outputs, AppState.selectedOutputDevice)) {
                     outputId = AppState.selectedOutputDevice
                 }
                 AppState.selectedOutputDevice = outputId >= 0
                     ? outputId
-                    : (AppState.pendingOutputDeviceKey === "none"
+                    : (outputExplicitNone
                        ? -1
                        : AppState.firstDeviceId(outputs, realtimeController.defaultOutputDevice,
                                                 realtimeController.outputDevices))
-                AppState.pendingOutputDeviceKey = ""
+                if (outputId >= 0) {
+                    AppState.pendingOutputDeviceKey = AppState.deviceKey(
+                        realtimeController.outputDevices, outputId)
+                }
 
+                const monitorExplicitNone = AppState.pendingMonitorDeviceKey === "none"
                 let monitorId = AppState.resolveDeviceId(outputs, AppState.pendingMonitorDeviceKey)
-                if (AppState.pendingMonitorDeviceKey === "none") {
+                if (monitorExplicitNone) {
                     monitorId = -1
                 } else if (monitorId < 0 && AppState.containsDevice(outputs, AppState.selectedMonitorDevice)) {
                     monitorId = AppState.selectedMonitorDevice
                 }
                 AppState.selectedMonitorDevice = monitorId
-                AppState.pendingMonitorDeviceKey = ""
                 if (monitorId >= 0) {
+                    AppState.pendingMonitorDeviceKey = AppState.deviceKey(
+                        realtimeController.outputDevices, monitorId)
                     root.lastMonitorDevice = monitorId
                 }
             }
@@ -304,6 +319,13 @@ ApplicationWindow {
         // Selecting a device turns monitoring on; "不监听" turns it off.
         function onSelectedMonitorDeviceChanged() {
             realtimeController.monitorDevice = AppState.selectedMonitorDevice
+            // The key follows the choice (including the explicit "none" a -1
+            // resolves to), so a later rescan does not resurrect a monitor
+            // device the user turned off.
+            AppState.pendingMonitorDeviceKey = AppState.deviceKey(
+                realtimeController.outputDevices,
+                AppState.selectedMonitorDevice
+            )
         }
     }
 

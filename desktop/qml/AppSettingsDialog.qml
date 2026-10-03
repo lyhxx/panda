@@ -168,6 +168,20 @@ Popup {
                     visible: AppState.settingsTab === "audio"
                     spacing: Theme.space4
 
+                    // A failed scan used to be completely invisible: the
+                    // pickers just showed their placeholder forever and the
+                    // refresh button gave no feedback. Show the controller's
+                    // own error, verbatim (it carries the subprocess detail).
+                    Text {
+                        Layout.fillWidth: true
+                        visible: realtimeController.deviceError.length > 0
+                        text: realtimeController.deviceError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontSmall
+                        font.family: Theme.fontFamily
+                        wrapMode: Text.WordWrap
+                    }
+
                     // Input
                     AppCard {
                         Layout.fillWidth: true
@@ -183,12 +197,30 @@ Popup {
                             spacing: Theme.space2
                             AppComboBox {
                                 Layout.fillWidth: true
-                                model: AppState.filteredDevices(realtimeController.inputDevices)
+                                // Until the scan lands there is nothing to
+                                // pick from: say so (or say it failed) instead
+                                // of showing an empty field. The placeholder
+                                // row is disabled, so it cannot be chosen as
+                                // a device -- the input list has no "none".
+                                model: realtimeController.inputDevices.length > 0
+                                       ? AppState.filteredDevices(realtimeController.inputDevices)
+                                       : [{
+                                             "id": -1,
+                                             "label": realtimeController.deviceError.length > 0
+                                                      ? qsTr("检测失败，点右侧刷新重试")
+                                                      : qsTr("正在检测设备…")
+                                         }]
                                 textRole: "label"
                                 valueRole: "id"
-                                enabled: count > 0
+                                enabled: realtimeController.inputDevices.length > 0
                                 desiredValue: AppState.selectedInputDevice
-                                onActivated: AppState.selectedInputDevice = currentValue
+                                onActivated: {
+                                    AppState.selectedInputDevice = currentValue
+                                    // Identity follows the user's pick, so a
+                                    // later rescan re-finds this device.
+                                    AppState.pendingInputDeviceKey = AppState.deviceKey(
+                                        realtimeController.inputDevices, currentValue)
+                                }
                             }
                             AppIconButton {
                                 iconName: "refresh"
@@ -259,7 +291,9 @@ Popup {
                                     "id": -1,
                                     "label": realtimeController.outputDevices.length > 0
                                              ? qsTr("不输出")
-                                             : qsTr("正在检测设备…")
+                                             : (realtimeController.deviceError.length > 0
+                                                ? qsTr("检测失败，点右侧刷新重试")
+                                                : qsTr("正在检测设备…"))
                                 }].concat(
                                     AppState.filteredDevices(realtimeController.outputDevices)
                                 )
@@ -267,7 +301,14 @@ Popup {
                                 valueRole: "id"
                                 enabled: realtimeController.outputDevices.length > 0
                                 desiredValue: AppState.selectedOutputDevice
-                                onActivated: AppState.selectedOutputDevice = currentValue
+                                onActivated: {
+                                    AppState.selectedOutputDevice = currentValue
+                                    // -1 maps to the explicit "none" key, so
+                                    // choosing 不输出 survives a rescan instead
+                                    // of being re-resolved back on.
+                                    AppState.pendingOutputDeviceKey = AppState.deviceKey(
+                                        realtimeController.outputDevices, currentValue)
+                                }
                             }
                             AppIconButton {
                                 iconName: "refresh"

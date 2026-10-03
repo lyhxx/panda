@@ -26,6 +26,11 @@ ComboBox {
 
     onDesiredValueChanged: syncCurrentIndex()
     onCountChanged: syncCurrentIndex()
+    // Re-assigning a model with the same count (a device rescan that only
+    // renumbers) fires no countChanged, but ComboBox still rewrites
+    // currentIndex itself -- leaving the field blank until the next real
+    // change. Re-sync here too; the function is idempotent.
+    onModelChanged: syncCurrentIndex()
     Component.onCompleted: syncCurrentIndex()
 
     font.pixelSize: Theme.fontBody
