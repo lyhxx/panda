@@ -4,7 +4,9 @@
 
 #include <QByteArray>
 #include <QDir>
+#include <QFile>
 #include <QModelIndex>
+#include <QTextStream>
 
 #include <algorithm>
 #include <utility>
@@ -13,6 +15,18 @@ namespace {
 
 QString from_utf8(const std::string& value) {
     return QString::fromUtf8(value.data(), static_cast<int>(value.size()));
+}
+
+// The library is the one model that moves without this process asking it to,
+// so its rescans are worth keeping in the shared event log: "the pack is gone
+// from disk but still on screen" is otherwise unexplainable from outside.
+void log_event(const QString& line) {
+    QFile log(QDir::tempPath() + QStringLiteral("/panda_events.log"));
+    if (!log.open(QIODevice::Append | QIODevice::Text)) {
+        return;
+    }
+    QTextStream stream(&log);
+    stream << line << '\n';
 }
 
 QString describe_error(const panda::Status& status) {
@@ -46,7 +60,24 @@ QString describe_error(const panda::Status& status) {
 }  // namespace
 
 PackListModel::PackListModel(QObject* parent)
-    : QAbstractListModel(parent) {}
+    : QAbstractListModel(parent) {
+    refresh_timer_.setSingleShot(true);
+    refresh_timer_.setInterval(150);
+    // Nothing in a file manager goes through this model, so the only signal it
+    // ever gets is "the directory changed". One batch of pasting or deleting
+    // fires that several times; collapse the burst into a single rescan.
+    connect(&refresh_timer_, &QTimer::timeout, this, &PackListModel::refresh);
+    connect(
+        &watcher_,
+        &QFileSystemWatcher::directoryChanged,
+        this,
+        [this] {
+            log_event(QStringLiteral("[panda.packs] dir-change %1")
+                          .arg(voicesRoot_));
+            refresh_timer_.start();
+        }
+    );
+}
 
 int PackListModel::rowCount(const QModelIndex& parent) const {
     if (parent.isValid()) {
@@ -136,6 +167,7 @@ void PackListModel::setVoicesRoot(const QString& value) {
         return;
     }
     voicesRoot_ = value;
+    watch_voices_root();
     emit voicesRootChanged();
 }
 
@@ -187,6 +219,26 @@ bool PackListModel::containsFolder(const QString& folderPath) const {
     );
 }
 
+void PackListModel::watch_voices_root() {
+    if (voicesRoot_.isEmpty()) {
+        return;
+    }
+    const QString root = QDir::cleanPath(voicesRoot_);
+    if (!QDir(root).exists()) {
+        QDir().mkpath(root);
+    }
+    if (!watcher_.directories().contains(root)) {
+        watcher_.addPath(root);
+    }
+}
+
+QString PackListModel::firstFolder() const {
+    if (all_entries_.empty()) {
+        return {};
+    }
+    return QString::fromStdWString(all_entries_.front().path.wstring());
+}
+
 void PackListModel::refresh() {
     std::vector<panda::modelstore::Manifest> manifests;
     const auto status = panda::modelstore::scan_voice_packs(
@@ -214,6 +266,18 @@ void PackListModel::refresh() {
     } else {
         set_error(status.code, describe_error(status));
     }
+
+    // The watcher drops its path as soon as the directory is deleted, so every
+    // rescan re-asserts it -- and a root that vanished is created again,
+    // otherwise whatever gets pasted in afterwards would never be noticed.
+    watch_voices_root();
+    log_event(
+        QStringLiteral("[panda.packs] rescan count=%1 root=%2 watched=%3")
+            .arg(static_cast<qulonglong>(all_entries_.size()))
+            .arg(voicesRoot_)
+            .arg(watcher_.directories().join(QStringLiteral(";")))
+    );
+    emit packsChanged();
 }
 
 QString PackListModel::filter() const {

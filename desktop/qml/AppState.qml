@@ -209,4 +209,18 @@ QtObject {
         }
         return false
     }
+
+    // ---- Selection -------------------------------------------------------
+    // The library can shrink under our feet: a folder deleted in the file
+    // manager leaves selectedPack pointing at nothing, and the next start
+    // fails on a pack that is no longer there. Hand the selection back to a
+    // pack that still exists -- the first one while any remain, an empty
+    // library clears it. The model is passed in like every other dependency
+    // here: no context property reaches into this singleton.
+    function reconcilePackSelection(packs) {
+        if (packs.containsFolder(selectedPack)) {
+            return
+        }
+        selectedPack = packs.firstFolder()
+    }
 }

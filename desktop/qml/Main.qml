@@ -253,6 +253,17 @@ ApplicationWindow {
     }
 
     Connections {
+        target: packListModel
+
+        // The library is shared with the file manager: a folder deleted out
+        // there removes a row here, possibly the one being played. Re-home the
+        // selection the moment the rescan lands.
+        function onPacksChanged() {
+            AppState.reconcilePackSelection(packListModel)
+        }
+    }
+
+    Connections {
         target: AppState
 
         function onSettingsOpenChanged() { root.syncMicMonitor() }

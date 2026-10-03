@@ -183,7 +183,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("点击「安装音色包」导入 ZIP，或把音色包放进 voices 目录后刷新。")
+                    text: qsTr("点击「安装音色包」导入 ZIP，或把音色包文件夹直接放进 voices 目录，列表会自动更新。")
                     color: Theme.textSecondary
                     font.pixelSize: Theme.fontBody
                     font.family: Theme.fontFamily
@@ -231,9 +231,7 @@ Item {
         destructive: true
         onConfirmed: {
             packListModel.removePack(page.pendingPackId)
-            if (!packListModel.containsFolder(AppState.selectedPack)) {
-                AppState.selectedPack = ""
-            }
+            AppState.reconcilePackSelection(packListModel)
         }
     }
 }

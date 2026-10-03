@@ -130,6 +130,7 @@ private slots:
     void filters_by_id_and_name();
     void refresh_keeps_the_active_filter();
     void contains_folder_uses_the_unfiltered_set();
+    void watches_the_voices_root_for_external_changes();
 };
 
 void PackListModelTest::empty_root_scans_to_zero() {
@@ -333,6 +334,34 @@ void PackListModelTest::contains_folder_uses_the_unfiltered_set() {
     model.setFilter(QStringLiteral("Nai Long"));
     QCOMPARE(model.count(), 1);
     QVERIFY(model.containsFolder(manbo));
+
+    // firstFolder() is where a vanished selection lands, so it has to ignore
+    // the search box as well.
+    QCOMPARE(model.firstFolder(), manbo);
+}
+
+void PackListModelTest::watches_the_voices_root_for_external_changes() {
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QVERIFY(create_valid_pack(temp.path(), QStringLiteral("manbo")));
+
+    PackListModel model;
+    model.setVoicesRoot(temp.path());
+    model.refresh();
+    QCOMPARE(model.count(), 1);
+    QVERIFY(!model.firstFolder().isEmpty());
+
+    // A folder deleted in the file manager never touches this model -- only
+    // the directory watch can tell it the row is gone.
+    QVERIFY(QDir(temp.filePath(QStringLiteral("manbo"))).removeRecursively());
+    QTRY_COMPARE_WITH_TIMEOUT(model.count(), 0, 3000);
+    QCOMPARE(model.firstFolder(), QString());
+
+    // A folder pasted in afterwards has to appear the same way, without the
+    // root ever being re-set or rescanned by hand.
+    QVERIFY(create_valid_pack(temp.path(), QStringLiteral("nai-long")));
+    QTRY_COMPARE_WITH_TIMEOUT(model.count(), 1, 3000);
+    QVERIFY(model.containsFolder(model.firstFolder()));
 }
 
 QTEST_GUILESS_MAIN(PackListModelTest)

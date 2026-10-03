@@ -4,8 +4,10 @@
 #include "panda/status.hpp"
 
 #include <QAbstractListModel>
+#include <QFileSystemWatcher>
 #include <QHash>
 #include <QString>
+#include <QTimer>
 #include <QVariant>
 
 #include <filesystem>
@@ -79,6 +81,10 @@ public:
     // Checks the unfiltered set, so hiding a pack with the search box does not
     // make a restored selection look stale.
     [[nodiscard]] Q_INVOKABLE bool containsFolder(const QString& folderPath) const;
+    // First pack of the unfiltered set, empty when the library is empty. Used
+    // to re-home a selection whose folder vanished from disk, so it must
+    // ignore the search filter.
+    [[nodiscard]] Q_INVOKABLE QString firstFolder() const;
 
 signals:
     void countChanged();
@@ -86,6 +92,10 @@ signals:
     void lastErrorChanged();
     void lastMessageChanged();
     void filterChanged();
+    // The library changed outside of this process: someone added, removed or
+    // replaced a pack folder in the file manager. Emitted after every rescan
+    // so QML can re-check a selection that may have just disappeared.
+    void packsChanged();
 
 private:
     struct Entry {
@@ -96,6 +106,7 @@ private:
     void set_error(panda::ErrorCode code, const QString& message);
     void set_message(const QString& value);
     void apply_filter();
+    void watch_voices_root();
 
     std::vector<Entry> all_entries_;
     std::vector<Entry> entries_;
@@ -104,5 +115,7 @@ private:
     int lastErrorCode_{0};
     QString lastMessage_;
     QString filter_;
+    QFileSystemWatcher watcher_;
+    QTimer refresh_timer_;
 };
 
