@@ -237,6 +237,30 @@ while ($true) {
     Start-Sleep -Seconds 1
 }
 
+# The executable and every Qt DLL link the dynamic CRT (MSVCP140 /
+# VCRUNTIME140*). Windows itself does not carry those: a machine that never
+# installed the VC++ redistributable dies in the loader with a "找不到
+# VCRUNTIME140.dll" dialog before main() ever runs -- windeployqt does not
+# deploy them reliably. Copy the CRT app-locally instead: the executable's
+# own directory is first in the DLL search order, so the package stays
+# install-free.
+$crtCandidates = @(
+    "C:\Program Files*\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT",
+    "C:\Program Files*\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC142.CRT",
+    "C:\BuildTools\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT"
+)
+$crtDirectories = Get-ChildItem -Path $crtCandidates -Directory -ErrorAction SilentlyContinue |
+    Sort-Object -Property FullName -Descending
+if ($crtDirectories.Count -eq 0) {
+    throw (
+        "No VC CRT redistributable found (Microsoft.VC*.CRT); the package " +
+        "would not start on machines without the VC++ runtime."
+    )
+}
+Copy-Item `
+    -Path (Join-Path $crtDirectories[0].FullName "*.dll") `
+    -Destination $outputPath
+
 # Signing has to happen after windeployqt and before the checksum manifest, so
 # the recorded hash is the hash of the signed binary.
 if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {

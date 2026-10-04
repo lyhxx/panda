@@ -191,7 +191,10 @@ https://huggingface.co/s3prl/converted_ckpts/resolve/main/wavlm_large.pt
    干净环境下 doctor / 模拟变声 / GUI 启动全绿）。注意换路径不等于换机：
    editable 安装的 `.pth` 指向打包机源码目录时，本机验收会把它掩盖掉——
    打包脚本现已在 conda-unpack 后剥离 `__editable__*.pth`，且 `panda_version.py`
-   已随 `share\python` 分发，运行时对仓库零依赖。
+   已随 `share\python` 分发，运行时对仓库零依赖。同类陷阱还有 VC 运行库：
+   exe 与 Qt DLL 都动态链接 MSVCP140/VCRUNTIME140，Windows 不自带，
+   windeployqt 也不部署——脚本现在从 VC redist 目录 app-local 拷到包根，
+   否则没装过 VC++ 运行库的机器在 loader 阶段就起不来。
 
 ### 2.5 环境验证命令
 
