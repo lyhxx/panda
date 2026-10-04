@@ -294,13 +294,27 @@ Item {
     Timer {
         id: messageTimer
         interval: 4000
-        onTriggered: packListModel.clearMessages()
+        // clearMessages() wipes BOTH banners: a failure that landed while
+        // this timer was armed (batch installs do exactly that) must keep
+        // its own full window, so only a message-only state expires here.
+        onTriggered: {
+            if (packListModel.lastError.length === 0) {
+                packListModel.clearMessages()
+            }
+        }
     }
 
     Timer {
         id: errorTimer
         interval: 8000
-        onTriggered: packListModel.clearMessages()
+        // Only clear a failure that is still showing; an error already
+        // replaced by a fresh success message must not take the green line
+        // with it on its way out.
+        onTriggered: {
+            if (packListModel.lastError.length > 0) {
+                packListModel.clearMessages()
+            }
+        }
     }
 
     Connections {

@@ -21,6 +21,11 @@ ApplicationWindow {
     flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowMinimizeButtonHint
 
     property int lastMonitorDevice: -1
+    // Set only while onDevicesChanged re-homes the selection from a fresh
+    // payload. The assignments there fire the AppState change handlers, and
+    // the monitor key write-back must not run for a rescan-driven value --
+    // see onSelectedMonitorDeviceChanged.
+    property bool resolvingDevices: false
 
     // The worker reports progress at real stage boundaries, so its number
     // arrives in steps (20 -> 30 -> 59 -> 80). Ease the displayed value
@@ -100,26 +105,54 @@ ApplicationWindow {
         realtimeController.denoiseLevel = saved.denoiseLevel
     }
 
+    // The pending key is the last CONFIRMED identity of a device, so it wins
+    // over re-deriving a key from the live selection: with the device
+    // unplugged the selection has already fallen back, and storing that
+    // fallback would forget the real choice on the next launch. The id saved
+    // beside the key is the one the key resolves to (-1 while the device is
+    // absent) -- a live fallback id next to a missing device's key would let
+    // the next launch re-adopt the fallback and overwrite the key right in
+    // onDevicesChanged, undoing the retention guards.
+    function persistedDevice(devices, selectedDevice, pendingKey) {
+        if (pendingKey.length > 0) {
+            return {
+                id: AppState.resolveDeviceId(
+                    AppState.filteredDevices(devices), pendingKey),
+                key: pendingKey
+            }
+        }
+        return {
+            id: selectedDevice,
+            key: AppState.deviceKey(devices, selectedDevice)
+        }
+    }
+
     function persistSettings() {
+        const input = persistedDevice(
+            realtimeController.inputDevices,
+            AppState.selectedInputDevice,
+            AppState.pendingInputDeviceKey
+        )
+        const output = persistedDevice(
+            realtimeController.outputDevices,
+            AppState.selectedOutputDevice,
+            AppState.pendingOutputDeviceKey
+        )
+        const monitor = persistedDevice(
+            realtimeController.outputDevices,
+            AppState.selectedMonitorDevice,
+            AppState.pendingMonitorDeviceKey
+        )
         sessionStore.save({
             "voicePack": AppState.selectedPack,
             "model": AppState.selectedModel,
             "compute": AppState.selectedCompute,
-            "inputDevice": AppState.selectedInputDevice,
-            "inputDeviceKey": AppState.deviceKey(
-                realtimeController.inputDevices,
-                AppState.selectedInputDevice
-            ),
-            "outputDevice": AppState.selectedOutputDevice,
-            "outputDeviceKey": AppState.deviceKey(
-                realtimeController.outputDevices,
-                AppState.selectedOutputDevice
-            ),
-            "monitorDevice": AppState.selectedMonitorDevice,
-            "monitorDeviceKey": AppState.deviceKey(
-                realtimeController.outputDevices,
-                AppState.selectedMonitorDevice
-            ),
+            "inputDevice": input.id,
+            "inputDeviceKey": input.key,
+            "outputDevice": output.id,
+            "outputDeviceKey": output.key,
+            "monitorDevice": monitor.id,
+            "monitorDeviceKey": monitor.key,
             "prefillChunks": realtimeController.prefillChunks,
             "maxBacklogChunks": realtimeController.maxBacklogChunks,
             "noiseGateEnabled": realtimeController.noiseGateEnabled,
@@ -216,6 +249,7 @@ ApplicationWindow {
             // kept otherwise: only a confirmed identity updates it, never the
             // fallback, or a temporarily missing cable would be forgotten on
             // the very rescan that should recover it.
+            root.resolvingDevices = true
             const inputs = AppState.filteredDevices(realtimeController.inputDevices)
             const outputs = AppState.filteredDevices(realtimeController.outputDevices)
 
@@ -268,6 +302,7 @@ ApplicationWindow {
                 }
             }
 
+            root.resolvingDevices = false
             root.syncMicMonitor()
         }
 
@@ -319,6 +354,14 @@ ApplicationWindow {
         // Selecting a device turns monitoring on; "不监听" turns it off.
         function onSelectedMonitorDeviceChanged() {
             realtimeController.monitorDevice = AppState.selectedMonitorDevice
+            if (root.resolvingDevices) {
+                // A rescan re-homes the selection: onDevicesChanged writes
+                // the key itself when the device resolved, and a device that
+                // is temporarily missing must not overwrite its identity
+                // with "none" -- the key is exactly what recovers it on the
+                // next payload.
+                return
+            }
             // The key follows the choice (including the explicit "none" a -1
             // resolves to), so a later rescan does not resurrect a monitor
             // device the user turned off.
