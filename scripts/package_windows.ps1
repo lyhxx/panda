@@ -249,8 +249,10 @@ $crtCandidates = @(
     "C:\Program Files*\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC142.CRT",
     "C:\BuildTools\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT"
 )
-$crtDirectories = Get-ChildItem -Path $crtCandidates -Directory -ErrorAction SilentlyContinue |
-    Sort-Object -Property FullName -Descending
+$crtDirectories = @(
+    Get-ChildItem -Path $crtCandidates -Directory -ErrorAction SilentlyContinue |
+        Sort-Object -Property FullName -Descending
+)
 if ($crtDirectories.Count -eq 0) {
     throw (
         "No VC CRT redistributable found (Microsoft.VC*.CRT); the package " +
