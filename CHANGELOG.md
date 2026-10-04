@@ -17,36 +17,16 @@
 
 ### 新增
 
-- 实时变声管线：推理进程独立于界面进程（worker 解耦），启动预热、尾部续冲，界面卡顿不再影响音频。
+- 实时变声管线：推理进程独立于界面进程（worker 解耦），启动预热、尾部续冲，界面卡顿不影响音频。
 - 主界面：音色卡片（安装 / 试听 / 选中态）、底部控制条（开启 / 停止、监听开关、设置入口）、状态行（延迟平滑显示、过载与监听指示）、标题栏主题切换。
 - 音色库页：搜索、收藏、排序、删除，以及批量安装 + 逐项进度 / 失败原因横幅。
 - 设置弹窗：音频页（输出设备含"不输出"占位、输入/输出电平与系统音量、监听、降噪三档、静音门开关与阈值）与常规页（性能与延迟、诊断、关于）；主题切换在标题栏；设备与音量等配置写入 AppData，重开程序自动恢复。
 - 诊断：实时日志面板（自动跟随文件尾部）+「打开日志文件」按钮；`panda doctor` 一键自检 Python 环境、模型、音色包、音频设备。
 - 命令行 `panda`：自检、模拟跑管线（无音频设备也能验证）、实时会话、基准测试、音色包导出等子命令。
 - 音色包导出工具：`panda pack` 从 WAV/MP3/FLAC/OGG 等导出带 embed/manifest.json 的标准音色包，发布物为独立的 `Panda-Pack.zip`（不带环境）。
-- 打包：`scripts/package_windows.ps1` 一键完成构建、自检、四资产分包与 2 GiB 上限校验；`scripts/install_windows.ps1` 提供安装版（仅本机使用，不随 Release 分发）。
+- 打包：`scripts/package_windows.ps1` 一键完成构建、自检、四资产分包与 2 GiB 上限校验；`scripts/install_windows.ps1` 提供安装版（仅内部使用，不随 Release 分发）。
 - 音色包批量安装脚本 `scripts/install_voice_pack.ps1`（支持一次多个 zip）。
 - 版本号单点管理：C++ 侧 `core/include/panda/version.hpp`、Python 侧 `python/src/panda_version.py`，根 CMakeLists 与打包脚本都从同一文件解析；测试锁定两侧数值一致，杜绝再次漂移。
-
-### 变更
-
-- 版本号由 0.1.0（开发期）升为 1.0.0，作为首个正式发布。
-- **panda-engine 合并入本仓库**：Python 部分移至 `python/`、测试移至 `tests/`，原 panda-engine 仓库归档并挂指引；不再需要双仓库克隆。
-- 文档重组为三份：README（产品）、docs/DEVELOPMENT.md（开发）、CHANGELOG（本文件），原 GOAL_STATUS / VIRTUAL_AUDIO / ENVIRONMENT / MEANVC2_TRAINING / VOICE_PACK_FORMAT 等文档删除，有用内容并入上述三份。
-- 发布流程：不再由 CI 打包，改为本机 `package_windows.ps1` 出四资产后上传 GitHub Release；Release 说明只写简要信息，详细变更以本文件为准。
-- 日志落盘改为跟随运行时格式（`\r\n`），日志面板按文件尾部跟随，移除按关键字过滤的残留逻辑。
-- 延迟显示改为 2.5s OutCubic 平滑，避免数值跳变。
-- 打包过程保留 `voices/` 目录（本机音色不进 Release 资产，也不因重新打包而丢失）。
-
-### 修复
-
-- 变声尾部断续与最后一段漏变声：抖动缓冲裁剪 580ms→320ms 并修正 backlog 处理，长句与句尾不再出现"最后几秒是原声 / 卡顿"。
-- 启动到首块音频的等待时间 348ms→133ms，开启变声更跟手。
-- 日志出现 `\r\r\n` 导致的空行污染。
-- 升级 / 重新打包覆盖导致用户已装音色包丢失。
-- 系统设备顺序变化后错选设备：设备改用「hostApi + 名称」稳定键匹配。
-- GBK 控制台下 CLI 输出非 ASCII 字符抛 UnicodeEncodeError。
-- 输出设备支持显式选择"不输出"（纯本地监听场景不强制选真实输出）。
 
 ### 已知限制
 

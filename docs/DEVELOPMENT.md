@@ -17,7 +17,6 @@
 
 ### 1.2 仓库结构
 
-2026-10 起 panda 与 panda-engine 合并为单仓库（原 panda-engine 已并入后删除），
 Python 引擎源码位于 `python/`：
 
 ```text
@@ -32,7 +31,7 @@ panda/
     src/
   cli/                      C++ 命令行入口（main.cpp）
   desktop/                  Qt 6 / QML 桌面应用
-  python/                   Python 引擎（原 panda-engine/src）
+  python/                   Python 引擎
     pyproject.toml          setuptools 工程，dynamic version
     src/
       panda_cli/            统一命令行入口
@@ -71,12 +70,7 @@ panda/
 
 ## 2. 开发环境
 
-### 2.1 打包机 / 开发机清单（已验证）
-
-```text
-系统：Windows 10 Home China，Build 26300，无管理员权限
-CPU：Intel Core Ultra 5 125H（14C/18T）  内存：31.6 GB  核显：Intel Arc，无独显
-```
+### 2.1 构建环境（已验证版本）
 
 | 组件 | 位置 | 版本 |
 | --- | --- | --- |
@@ -102,7 +96,7 @@ numpy 2.x 的便携环境。
 
 ### 2.2 新机器从零搭建
 
-1. **克隆仓库**（panda 单仓库，无需第二个仓库）：
+1. **克隆仓库**：
 
    ```powershell
    git clone https://github.com/lyhxx/panda.git
@@ -186,15 +180,13 @@ https://huggingface.co/s3prl/converted_ckpts/resolve/main/wavlm_large.pt
    python\Scripts\conda-unpack.exe
    ```
 
-   打包脚本对运行时解压加重试（终端防护在 5 万文件突发写入时会偶发拒写），
-   conda-unpack 在打包机跑过；1.0.0 已按 12.5-4 完成换路径验收（全新路径、
-   干净环境下 doctor / 模拟变声 / GUI 启动全绿）。注意换路径不等于换机：
-   editable 安装的 `.pth` 指向打包机源码目录时，本机验收会把它掩盖掉——
-   打包脚本现已在 conda-unpack 后剥离 `__editable__*.pth`，且 `panda_version.py`
-   已随 `share\python` 分发，运行时对仓库零依赖。同类陷阱还有 VC 运行库：
-   exe 与 Qt DLL 都动态链接 MSVCP140/VCRUNTIME140，Windows 不自带，
-   windeployqt 也不部署——脚本现在从 VC redist 目录 app-local 拷到包根，
-   否则没装过 VC++ 运行库的机器在 loader 阶段就起不来。
+   打包脚本对运行时解压加重试（终端防护在 5 万文件突发写入时会偶发拒写）。
+   注意换路径验收不等于换机：editable 安装的 `.pth` 指向源码目录时，在同一台
+   机器上的验收会被掩盖——脚本已在 conda-unpack 后剥离 `__editable__*.pth`，
+   且 `panda_version.py` 随 `share\python` 分发，运行时对仓库零依赖。
+   同类陷阱还有 VC 运行库：exe 与 Qt DLL 都动态链接 MSVCP140/VCRUNTIME140，
+   Windows 不自带，windeployqt 也不部署——脚本从 VC redist 目录 app-local
+   拷到包根，否则没装过 VC++ 运行库的机器在 loader 阶段就起不来。
 
 ### 2.5 环境验证命令
 
@@ -223,7 +215,7 @@ powershell -ExecutionPolicy Bypass -File scripts\run_dev_desktop.ps1
 
 脚本自动设置运行环境（也可手动配）：
 
-| 环境变量 | 含义 | 开发机取值 |
+| 环境变量 | 含义 | 示例取值 |
 | --- | --- | --- |
 | `PANDA_PYTHON` | 引擎解释器 | `.tools\miniforge3\envs\meanvc2-cpu\python.exe` |
 | `PANDA_MEANVC2_ROOT` | MeanVC2 仓库 | `..\deps\MeanVC2` |
@@ -259,10 +251,10 @@ powershell -ExecutionPolicy Bypass -File scripts\run_dev_desktop.ps1
 
 - C++ 套件曾出现**退出码 0 但没跑完**的假通过：CTest 现在要求
   `PANDA_CORE_TESTS_COMPLETE` 标记，截断的运行会失败而不是假装成功。
-- 本机删除 `.tmp` 下新建目录会卡 ~31 秒，C++ 测试用唯一路径 fixture 且不回收
+- 在部分机器上删除 `.tmp` 下新建目录会卡约 30 秒，C++ 测试用唯一路径 fixture 且不回收
   （`.tmp` 可手工清理，CTest 有 120s 超时）。
 - Qt Test 目标必须建成控制台子系统，否则 GUI 子系统下**一行输出都没有**。
-- 本机 `PSModulePath` 被 PowerShell 7 目录污染时，Windows PowerShell 加载不了
+- `PSModulePath` 被 PowerShell 7 目录污染时，Windows PowerShell 加载不了
   Security 模块，签名测试要显式指定模块目录。
 - 全量 Python 套件偶发一次未记录名称的失败（约 15 次里 1 次），单模块各跑
   10–15 次全过，疑似并发竞争；再现时用 `-v` 抓具体用例。
@@ -285,7 +277,7 @@ panda voice-check --meanvc2-root ..\deps\MeanVC2 `
 ```
 
 判定依据是说话人嵌入余弦相似度（转换后应更接近目标，且远离源），自带
-"源→自身"对照保证度量可信。开发机实测：
+"源→自身"对照保证度量可信。实测参考值：
 
 ```text
 对照（源→自身）    转换后 vs 源   +0.7323
@@ -353,7 +345,7 @@ panda voice-check --meanvc2-root ..\deps\MeanVC2 `
 - 用户配置：Windows 注册表（QSettings），`SessionStore` 双向清洗——未知模型/
   后端回退默认、延迟走 `clamp_latency`、负设备 id 视为未选、音色包不存在则清空。
 - 设备持久化存 `hostApi|设备名` 稳定键，重启后对新设备列表重新解析，
-  Windows 设备顺序变化不再错选。
+  Windows 设备顺序变化时仍按稳定键选对设备。
 - 音色与安装状态：`voices\<id>\manifest.json` 明文 + `package-manifest.json`
   （打包完整性）。日志落盘在 `AppData`，桌面端「打开日志文件」按钮直达，
   日志面板跟随文件尾部。
@@ -707,7 +699,7 @@ assets/{dit.safetensors, spk_emb.npy, register.json} + mvc2_<id>_rt.yaml + manif
 ### 11.2 CPU 基准（480 块 ≈ 76.8 秒音频）
 
 ```text
-CPU:      Intel Core Ultra 5 125H (14C/18T)，16 kHz，160 ms 块，单线程
+CPU:      14 核移动级处理器，16 kHz，160 ms 块，单线程
 RTF:      0.757        延迟: mean 121 / p50 120 / p95 132 / p99 145 ms
 超时块:   2 / 480      长期漂移: 无     初始化: ~6 秒（含 WavLM 说话人模型）
 ```
@@ -763,8 +755,8 @@ RTF:      0.757        延迟: mean 121 / p50 120 / p95 132 / p99 145 ms
 
 - **单资产 ≤2 GiB**（GitHub 上限），打包后逐个校验，超限直接报错——
   模型包按 1.8 GB 阈值预留分卷余地。
-- 资产内**不含 `voices/`**（用户私密音色，脚本自动排除）；本机
-  `dist\Panda\voices` 保留用于本机验证。
+- 资产内**不含 `voices/`**（用户私密音色，脚本自动排除）；打包目录
+  `dist\Panda\voices` 保留用于验证。
 - 主包清单 `package-manifest.json` 描述**组装后**的完整目录（三包解压到一起
   即与清单一致），安装器据此逐文件校验。
 
@@ -784,7 +776,7 @@ Panda-Models.zip   ─┘              python\、DeepFilterNet\、MeanVC2\
 `share\python`（PYTHONPATH）后拉起 `panda_desktop.exe`，全部相对自身路径，
 不依赖环境变量、不挑盘符路径。
 
-### 12.4 安装版（仅本机/可选分发）
+### 12.4 安装版（仅内部使用 / 可选分发）
 
 ```powershell
 .\scripts\install_windows.ps1 -SourceDirectory dist\Panda   # 复制前逐文件校验 manifest
@@ -803,7 +795,7 @@ Panda-Models.zip   ─┘              python\、DeepFilterNet\、MeanVC2\
 1. 两处版本号改成同一值（3.2），跑 Python 测试 + CTest 全绿。
 2. 决定取舍：`dist\Panda\voices` 的私密音色不会进资产（自动排除），无需手动清理；
    若要绝对保险，打包前手动清空 `dist\Panda\voices`。
-3. 本机打包：`.\scripts\package_windows.ps1 -BundlePython -BundleMeanVC2`
+3. 打包：`.\scripts\package_windows.ps1 -BundlePython -BundleMeanVC2`
    （终端**不要**用 `2>&1 | Tee` 转发——脚本 `$ErrorActionPreference=Stop`
    会把 windeployqt 的良性 stderr 警告当致命错误；要留日志用
    `cmd /c "... > log 2>&1"` 级重定向）。
@@ -829,15 +821,15 @@ Panda-Models.zip   ─┘              python\、DeepFilterNet\、MeanVC2\
 > 打包过程中 360 安全大脑对"批量哈希 + 复制 DLL"启发式报警为误报，
 > 产物已按 manifest 逐文件核对完整（缺 0）。
 
-### 12.6 打包机注意事项
+### 12.6 打包注意事项
 
 - windeployqt 良性警告（dxcompiler/dxil）会被 PowerShell 重定向放大：
   转发 stderr 必须在 cmd 层做，见 12.5-3。
 - 5 万文件突发解压可能被终端防护拒写个别文件（实测 ucrtbase.dll ENOENT），
   脚本已对运行时解压加重试；重放同条目必定成功说明是瞬时故障。
 - `windeployqt` 对刚复制的 exe 加锁时会重试 3 次（EDR 扫描）。
-- 打包取材全在本机（build 产物、`.tools` 的 conda/Qt、`deps\MeanVC2`），
-  不走 CI；大文件不进 git。
+- 打包取材均来自本仓库目录（build 产物、`.tools` 的 conda/Qt、
+  `deps\MeanVC2`），大文件不进 git。
 - conda 环境自带 vcruntime140/msvcp140 全套，运行时**不需要**目标机装
   VC++ redist。
 
