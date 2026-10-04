@@ -127,6 +127,7 @@ private slots:
     void clearing_messages_resets_state();
     void report_batch_summarises_a_multi_selection();
     void refresh_lists_an_installed_pack();
+    void refresh_failure_keeps_previous_rows();
     void removing_an_installed_pack_succeeds();
     void filters_by_id_and_name();
     void refresh_keeps_the_active_filter();
@@ -263,6 +264,36 @@ void PackListModelTest::refresh_lists_an_installed_pack() {
         QStringLiteral("Demo Voice")
     );
     QVERIFY(model.lastError().isEmpty());
+}
+
+void PackListModelTest::refresh_failure_keeps_previous_rows() {
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QVERIFY(create_valid_pack(temp.path(), QStringLiteral("demo-voice")));
+
+    PackListModel model;
+    model.setVoicesRoot(temp.path());
+    model.refresh();
+    QCOMPARE(model.count(), 1);
+
+    // A root the probe cannot stat means "unknown", not "the library is
+    // empty": the rows must survive, or the selection is re-homed off the
+    // very pack the user is playing and the close-time save persists that
+    // loss. The failure has to survive watch_voices_root()'s re-create pass
+    // (an absent root alone would be rebuilt before the scan), so the root
+    // is unreachable THROUGH a regular file: mkpath cannot build it and the
+    // probe reports an error code -- verified against MSVC's std::filesystem,
+    // where such paths set it rather than counting as "not found".
+    const auto blocker = QDir(temp.path()).filePath(
+        QStringLiteral("blocker")
+    );
+    QVERIFY(write_bytes(blocker, QByteArrayLiteral("not a directory")));
+    model.setVoicesRoot(QDir(blocker).filePath(QStringLiteral("voices")));
+    model.refresh();
+
+    QCOMPARE(model.count(), 1);
+    QVERIFY(!model.lastError().isEmpty());
+    QVERIFY(model.lastErrorCode() != static_cast<int>(PackListModel::NoError));
 }
 
 void PackListModelTest::removing_an_installed_pack_succeeds() {

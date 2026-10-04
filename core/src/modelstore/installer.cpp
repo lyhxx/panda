@@ -622,9 +622,14 @@ Status scan_voice_packs(
     manifests.clear();
     std::error_code error;
     if (!std::filesystem::is_directory(voices_root, error)) {
-        // A root that does not exist yet is the normal first-run state. The
-        // probe itself failing (permissions, broken link) is not: reporting it
-        // as an empty library would wipe the caller's current rows.
+        // A root the probe cannot stat is "unknown", not "the library is
+        // empty": the drive may be unplugged or the permissions revoked, and
+        // reporting empty would wipe the caller's current rows (the desktop
+        // keeps them and its watcher re-creates the directory). Note that on
+        // this platform the probe reports even a merely ABSENT root through
+        // the error code -- verified against MSVC's std::filesystem, where
+        // missing, invalid-name and through-a-file paths all set it -- so
+        // only a root that exists but is not a directory scans as empty.
         if (error) {
             return Status::error(
                 ErrorCode::io_error,
